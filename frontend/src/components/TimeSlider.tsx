@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { Play, Pause, RotateCcw, Clock, CloudRain } from 'lucide-react';
 import { TimestepSummary } from '../types';
@@ -14,26 +15,34 @@ export const TimeSlider: React.FC<TimeSliderProps> = ({
   timesteps,
 }) => {
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const minutesList = timesteps.length > 0 ? timesteps.map((t) => t.minutes) : [0, 30, 60, 90, 120, 180];
+  const minutesList =
+    timesteps.length > 0
+      ? timesteps.map((t) => t.minutes)
+      : [0, 30, 60, 90, 120, 180];
 
   const currentSummary = timesteps.find((t) => t.minutes === currentMinute);
 
   // Auto-play animation loop
   useEffect(() => {
     let timer: any;
+
     if (isPlaying) {
       timer = setInterval(() => {
-        onMinuteChange((prev: number) => {
-          const currentIndex = minutesList.indexOf(prev);
-          if (currentIndex === -1 || currentIndex >= minutesList.length - 1) {
-            return minutesList[0];
-          }
-          return minutesList[currentIndex + 1];
-        });
+        const currentIndex = minutesList.indexOf(currentMinute);
+
+        if (
+          currentIndex === -1 ||
+          currentIndex >= minutesList.length - 1
+        ) {
+          onMinuteChange(minutesList[0]);
+        } else {
+          onMinuteChange(minutesList[currentIndex + 1]);
+        }
       }, 1600);
     }
+
     return () => clearInterval(timer);
-  }, [isPlaying, minutesList, onMinuteChange]);
+  }, [isPlaying, minutesList, currentMinute, onMinuteChange]);
 
   const currentIndex = minutesList.indexOf(currentMinute);
 
@@ -48,9 +57,17 @@ export const TimeSlider: React.FC<TimeSliderProps> = ({
               ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
               : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30'
           }`}
-          title={isPlaying ? 'Pause timeline animation' : 'Play timeline progression'}
+          title={
+            isPlaying
+              ? 'Pause timeline animation'
+              : 'Play timeline progression'
+          }
         >
-          {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
+          {isPlaying ? (
+            <Pause className="w-4 h-4" />
+          ) : (
+            <Play className="w-4 h-4 fill-current ml-0.5" />
+          )}
         </button>
 
         <button
@@ -72,14 +89,17 @@ export const TimeSlider: React.FC<TimeSliderProps> = ({
             <Clock className="w-3.5 h-3.5" />
             FORECAST TIMELINE:
             <span className="bg-blue-950 px-2 py-0.5 rounded border border-blue-800 text-blue-200">
-              {currentMinute === 0 ? 'NOW (T+0)' : `T+${currentMinute} MIN`}
+              {currentMinute === 0
+                ? 'NOW (T+0)'
+                : `T+${currentMinute} MIN`}
             </span>
           </span>
 
           {currentSummary && (
             <span className="flex items-center gap-1.5 text-amber-300 bg-amber-950/40 px-2 py-0.5 rounded border border-amber-800/40 text-[11px]">
               <CloudRain className="w-3 h-3 text-amber-400" />
-              Intensity: <strong>{currentSummary.rainfall_mm_hr} mm/hr</strong>
+              Intensity:{' '}
+              <strong>{currentSummary.rainfall_mm_hr} mm/hr</strong>
             </span>
           )}
         </div>
@@ -91,7 +111,9 @@ export const TimeSlider: React.FC<TimeSliderProps> = ({
             <div
               className="h-full bg-blue-500 rounded-full transition-all duration-300"
               style={{
-                width: `${(currentIndex / Math.max(1, minutesList.length - 1)) * 100}%`,
+                width: `${
+                  (currentIndex / Math.max(1, minutesList.length - 1)) * 100
+                }%`,
               }}
             />
           </div>
@@ -120,6 +142,7 @@ export const TimeSlider: React.FC<TimeSliderProps> = ({
                       : 'bg-slate-900 border-slate-700 hover:border-slate-500'
                   }`}
                 />
+
                 <span
                   className={`mt-1.5 text-[10px] font-mono transition-colors ${
                     active
@@ -139,3 +162,4 @@ export const TimeSlider: React.FC<TimeSliderProps> = ({
     </div>
   );
 };
+
