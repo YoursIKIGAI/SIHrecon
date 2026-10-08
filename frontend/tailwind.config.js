@@ -23,6 +23,9 @@ export default {
         'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'ripple': 'ripple 1.5s linear infinite',
       },
+      screens: {
+        'xs': '480px',
+      },
       keyframes: {
         ripple: {
           '0%': { transform: 'scale(0.8)', opacity: '1' },

@@ -18,9 +18,16 @@ env/
 # Build output
 dist/
 build/
+frontend/dist/
+frontend/node_modules/
+
+# Cache
+.pytest_cache/
+*.cache
 
 # IDE
 .vscode/
+.idea/
 
 # OS
 .DS_Store

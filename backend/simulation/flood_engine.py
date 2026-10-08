@@ -134,6 +134,7 @@ class FloodEngine:
 
         # Clear state
         self.drainage_model.reset_state()
+        self.rainfall_module.reset_storm_track(self.city.rows, self.city.cols)
         surface_water_volume_m3 = np.zeros((self.city.rows, self.city.cols), dtype=np.float32)
 
         self.cached_depth_grids.clear()
@@ -148,7 +149,7 @@ class FloodEngine:
         cumulative_rainfall_mm = 0.0
         peak_intensity = 0.0
 
-        for minute in timestep_minutes:
+        for timestep_idx, minute in enumerate(timestep_minutes):
             delta_min = minute - prev_minute
             prev_minute = minute
             delta_sec = max(1.0, float(delta_min * 60))
@@ -160,8 +161,13 @@ class FloodEngine:
                 peak_intensity = intensity_mm_hr
 
             rain_grid_mm_hr = self.rainfall_module.generate_spatial_grid(
-                self.city.rows, self.city.cols, intensity_mm_hr
+                self.city.rows, self.city.cols, intensity_mm_hr, timestep_idx=timestep_idx
             )
+            storm_lat, storm_lon = self.city.cell_to_lat_lon(
+                int(self.rainfall_module.storm_center_r),
+                int(self.rainfall_module.storm_center_c)
+            )
+            self.rainfall_module.record_storm_position(minute, intensity_mm_hr, storm_lat, storm_lon)
 
             if engine_mode == "ml_surrogate" and self.ml_model.is_trained:
                 # ==========================================
@@ -289,7 +295,8 @@ class FloodEngine:
                 "rows": self.city.rows,
                 "cols": self.city.cols,
             },
-            radar_reflectivity_dbz=self.rainfall_to_dbz(peak_intensity)
+            radar_reflectivity_dbz=self.rainfall_to_dbz(peak_intensity),
+            storm_track=list(self.rainfall_module.storm_track),
         )
         self.last_result = response
         return response

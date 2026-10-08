@@ -10,7 +10,8 @@ import {
   TrendingUp, 
   Layers,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  Activity
 } from 'lucide-react';
 import { MLTrainingResponse } from '../types';
 
@@ -49,6 +50,90 @@ export const ModelTrainingModal: React.FC<ModelTrainingModalProps> = ({
   };
 
   const activeResult = trainingResult || currentMetrics;
+  const history = activeResult?.training_history || [];
+
+  // Helper to construct SVG loss curves
+  const renderLossCurve = () => {
+    if (!history || history.length < 2) return null;
+
+    const width = 540;
+    const height = 140;
+    const padding = 30;
+
+    const maxLoss = Math.max(
+      ...history.map((h: any) => Math.max(h.train_loss || 0, h.val_loss || 0)),
+      1.0
+    );
+
+    const minLoss = 0.0;
+    const lossRange = maxLoss - minLoss || 1.0;
+
+    const getX = (i: number) => padding + (i / (history.length - 1)) * (width - 2 * padding);
+    const getY = (val: number) => height - padding - ((val - minLoss) / lossRange) * (height - 2 * padding);
+
+    const trainPoints = history.map((h: any, i: number) => `${getX(i)},${getY(h.train_loss)}`).join(' ');
+    const valPoints = history.map((h: any, i: number) => `${getX(i)},${getY(h.val_loss)}`).join(' ');
+
+    return (
+      <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col gap-2">
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-semibold text-slate-300 flex items-center gap-1.5">
+            <Activity className="w-3.5 h-3.5 text-cyan-400" />
+            MLP Convergence Curve (NumPy Backprop Loss over Epochs)
+          </span>
+          <div className="flex items-center gap-3 text-[10px] font-mono">
+            <span className="flex items-center gap-1 text-cyan-400">
+              <span className="w-2.5 h-0.5 bg-cyan-400 rounded inline-block" />
+              Train Loss
+            </span>
+            <span className="flex items-center gap-1 text-amber-400">
+              <span className="w-2.5 h-0.5 bg-amber-400 rounded inline-block" />
+              Validation Loss
+            </span>
+          </div>
+        </div>
+
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-32 select-none overflow-visible">
+          {/* Grid lines */}
+          <line x1={padding} y1={padding} x2={width - padding} y2={padding} stroke="#334155" strokeDasharray="3,3" strokeWidth="0.5" />
+          <line x1={padding} y1={height / 2} x2={width - padding} y2={height / 2} stroke="#334155" strokeDasharray="3,3" strokeWidth="0.5" />
+          <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="#475569" strokeWidth="1" />
+
+          {/* Training Loss Path */}
+          <polyline
+            fill="none"
+            stroke="#38bdf8"
+            strokeWidth="2"
+            points={trainPoints}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Validation Loss Path */}
+          <polyline
+            fill="none"
+            stroke="#fbbf24"
+            strokeWidth="2"
+            points={valPoints}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Axis Labels */}
+          <text x={padding} y={height - 10} fill="#94a3b8" fontSize="9" fontFamily="monospace">Epoch 1</text>
+          <text x={width - padding} y={height - 10} fill="#94a3b8" fontSize="9" fontFamily="monospace" textAnchor="end">
+            Epoch {history[history.length - 1]?.epoch || epochs}
+          </text>
+          <text x={padding - 5} y={padding + 5} fill="#94a3b8" fontSize="8" fontFamily="monospace" textAnchor="end">
+            {maxLoss.toFixed(1)}
+          </text>
+          <text x={padding - 5} y={height - padding} fill="#94a3b8" fontSize="8" fontFamily="monospace" textAnchor="end">
+            0.0
+          </text>
+        </svg>
+      </div>
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
@@ -61,15 +146,15 @@ export const ModelTrainingModal: React.FC<ModelTrainingModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                <h3 className="font-bold text-sm text-white flex items-center gap-2 font-mono">
                   HYDRODYNAMIC AI / ML SURROGATE STUDIO
                 </h3>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
-                  PINN / SURROGATE
+                  FIX 10 MLP SURROGATE
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                Train a high-speed machine learning model to emulate 2D hydraulic flood routing
+                2-Hidden Layer Neural Network (8 → 32 → 16 → 1 ReLU) with mini-batch SGD in pure NumPy
               </p>
             </div>
           </div>
@@ -88,11 +173,11 @@ export const ModelTrainingModal: React.FC<ModelTrainingModalProps> = ({
             <Cpu className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
             <div className="text-xs text-slate-300 leading-relaxed">
               <span className="font-semibold text-cyan-300 block mb-0.5">
-                Surrogate Model Architecture & Physics Encoding:
+                Multi-Layer Perceptron (MLP) Architecture & Feature Attribution:
               </span>
-              The model ingests <strong>8 multi-scale spatial features</strong> (DEM elevation, slope, depression sink mask,
-              drain proximity, pipe throttle capacity, flow accumulation) and polynomial rainfall-elevation interaction terms.
-              It approximates the 2D hydrodynamic simulation in <strong>&lt; 2 milliseconds</strong>.
+              The upgraded surrogate uses <strong>Xavier weight initialization</strong>, <strong>mini-batch SGD (batch size 256)</strong>, 
+              <strong>dropout regularizer (p=0.1)</strong>, and <strong>early stopping</strong>. Features include DEM elevation, slope, depression sink mask,
+              drain proximity, pipe throttle capacity, and flow accumulation. Evaluates in <strong>&lt; 2 milliseconds</strong>.
             </div>
           </div>
 
@@ -119,7 +204,7 @@ export const ModelTrainingModal: React.FC<ModelTrainingModalProps> = ({
                 disabled={isTraining}
                 className="w-full accent-cyan-400 cursor-pointer"
               />
-              <span className="text-[10px] text-slate-500">Regularized gradient descent convergence steps</span>
+              <span className="text-[10px] text-slate-500">Backpropagation SGD iterations with early stopping</span>
             </div>
 
             {/* Storm Scenarios Slider */}
@@ -160,15 +245,18 @@ export const ModelTrainingModal: React.FC<ModelTrainingModalProps> = ({
             {isTraining ? (
               <>
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>Generating Synthetic Storms & Training Model...</span>
+                <span>Training MLP Neural Network (Backprop SGD)...</span>
               </>
             ) : (
               <>
                 <Sparkles className="w-4 h-4" />
-                <span>TRAIN SURROGATE MODEL NOW</span>
+                <span>TRAIN MLP SURROGATE MODEL NOW</span>
               </>
             )}
           </button>
+
+          {/* Loss Curve Chart (Fix 10) */}
+          {renderLossCurve()}
 
           {/* Real-Time Metrics & Training Output */}
           {activeResult && (
@@ -218,12 +306,12 @@ export const ModelTrainingModal: React.FC<ModelTrainingModalProps> = ({
                 </div>
               </div>
 
-              {/* Feature Importances Breakdown */}
+              {/* Permutation Feature Importances Breakdown */}
               {activeResult.feature_importances && (
                 <div className="bg-slate-950/60 border border-slate-800 p-3.5 rounded-xl flex flex-col gap-2">
                   <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                     <BarChart3 className="w-3.5 h-3.5 text-blue-400" />
-                    Physics Feature Importances:
+                    Permutation Feature Importances (Validation RMSE Delta):
                   </span>
                   <div className="flex flex-col gap-1.5 pt-1">
                     {Object.entries(activeResult.feature_importances).map(([feat, imp]: any) => {

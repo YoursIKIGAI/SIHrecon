@@ -1,0 +1,30 @@
+{
+  "event": "Mumbai 26 July 2005 Cloudburst",
+  "total_rainfall_mm": 944,
+  "forecast": [
+    {
+      "minutes": 0,
+      "rainfall_mm_hr": 18.0
+    },
+    {
+      "minutes": 30,
+      "rainfall_mm_hr": 65.0
+    },
+    {
+      "minutes": 60,
+      "rainfall_mm_hr": 142.0
+    },
+    {
+      "minutes": 90,
+      "rainfall_mm_hr": 210.0
+    },
+    {
+      "minutes": 120,
+      "rainfall_mm_hr": 185.0
+    },
+    {
+      "minutes": 180,
+      "rainfall_mm_hr": 95.0
+    }
+  ]
+}

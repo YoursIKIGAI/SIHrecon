@@ -76,6 +76,7 @@ class SimulationResponse(BaseModel):
     grid_bounds: Dict[str, float]                          # min_lat, max_lat, min_lon, max_lon
     grid_resolution: Dict[str, int]                        # rows, cols
     radar_reflectivity_dbz: Optional[float] = 52.0
+    storm_track: Optional[List[Dict[str, Any]]] = None
 
 class RouteRequest(BaseModel):
     origin: List[float] = Field(..., description="[longitude, latitude]")

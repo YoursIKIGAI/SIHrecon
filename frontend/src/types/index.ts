@@ -33,7 +33,7 @@ export interface FloodedRoadSegment {
   water_depth_cm: number;
   risk_level: RiskLevel;
   length_m: number;
-  coordinates: [number, number][]; // [lon, lat]
+  coordinates: [number, number][];
   is_blocked: boolean;
 }
 
@@ -70,6 +70,7 @@ export interface SimulationResponse {
     cols: number;
   };
   radar_reflectivity_dbz?: number;
+  storm_track?: { minute: number; center_lat: number; center_lon: number; intensity_mm_hr: number }[];
 }
 
 export interface RouteSegmentDetail {
@@ -154,21 +155,31 @@ export interface SystemStatus {
   version: string;
   engine_ready: boolean;
   ml_model_trained: boolean;
+  active_city: string;
+  data_sources?: { dem: string; roads: string };
   grid: {
     rows: number;
     cols: number;
     cell_area_m2: number;
-    bounds: {
-      min_lat: number;
-      max_lat: number;
-      min_lon: number;
-      max_lon: number;
-    };
+    bounds: { min_lat: number; max_lat: number; min_lon: number; max_lon: number };
   };
-  network: {
-    road_nodes: number;
-    road_edges: number;
-    drain_nodes: number;
-    drain_edges: number;
-  };
+  network: { road_nodes: number; road_edges: number; drain_nodes: number; drain_edges: number };
+}
+
+// Fix 2: Radar feed types
+export interface RadarFeedResult {
+  source: string;
+  event?: string;
+  forecast: RainfallPoint[];
+  note: string;
+}
+
+// Fix 8: City config types
+export interface CityInfo {
+  name: string;
+  description: string;
+  center_lat: number;
+  center_lon: number;
+  bounds: { min_lat: number; max_lat: number; min_lon: number; max_lon: number };
+  dem_available: boolean;
 }

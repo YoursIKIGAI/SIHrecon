@@ -47,12 +47,12 @@ export const TimeSlider: React.FC<TimeSliderProps> = ({
   const currentIndex = minutesList.indexOf(currentMinute);
 
   return (
-    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 shadow-2xl backdrop-blur-md flex items-center gap-4">
+    <div className="bg-slate-900/95 border border-slate-800 rounded-xl p-2 sm:p-3 shadow-2xl backdrop-blur-md flex items-center gap-2.5 sm:gap-4">
       {/* Play/Pause & Reset */}
-      <div className="flex items-center gap-1.5 shrink-0">
+      <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
         <button
           onClick={() => setIsPlaying(!isPlaying)}
-          className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
+          className={`w-7.5 sm:w-9 h-7.5 sm:h-9 rounded-lg flex items-center justify-center transition-all ${
             isPlaying
               ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
               : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30'
@@ -64,9 +64,9 @@ export const TimeSlider: React.FC<TimeSliderProps> = ({
           }
         >
           {isPlaying ? (
-            <Pause className="w-4 h-4" />
+            <Pause className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
           ) : (
-            <Play className="w-4 h-4 fill-current ml-0.5" />
+            <Play className="w-3.5 sm:w-4 h-3.5 sm:h-4 fill-current ml-0.5" />
           )}
         </button>
 
@@ -75,31 +75,30 @@ export const TimeSlider: React.FC<TimeSliderProps> = ({
             setIsPlaying(false);
             onMinuteChange(minutesList[0]);
           }}
-          className="w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-colors"
+          className="w-7.5 sm:w-9 h-7.5 sm:h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-colors"
           title="Reset to T+0 (NOW)"
         >
-          <RotateCcw className="w-4 h-4" />
+          <RotateCcw className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
         </button>
       </div>
 
       {/* Discrete Timeline Scrubber */}
-      <div className="flex-1 flex flex-col gap-1.5">
-        <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-          <span className="flex items-center gap-1.5 text-blue-400 font-semibold">
-            <Clock className="w-3.5 h-3.5" />
-            FORECAST TIMELINE:
-            <span className="bg-blue-950 px-2 py-0.5 rounded border border-blue-800 text-blue-200">
+      <div className="flex-1 flex flex-col gap-1 sm:gap-1.5 min-w-0">
+        <div className="flex items-center justify-between text-[11px] sm:text-xs font-mono text-slate-400">
+          <span className="flex items-center gap-1 sm:gap-1.5 text-blue-400 font-semibold truncate">
+            <Clock className="w-3 sm:w-3.5 h-3 sm:h-3.5 shrink-0" />
+            <span className="hidden sm:inline">FORECAST TIMELINE:</span>
+            <span className="bg-blue-950 px-1.5 sm:px-2 py-0.5 rounded border border-blue-800 text-blue-200 text-[10px] sm:text-xs">
               {currentMinute === 0
-                ? 'NOW (T+0)'
-                : `T+${currentMinute} MIN`}
+                ? 'NOW'
+                : `T+${currentMinute}m`}
             </span>
           </span>
 
           {currentSummary && (
-            <span className="flex items-center gap-1.5 text-amber-300 bg-amber-950/40 px-2 py-0.5 rounded border border-amber-800/40 text-[11px]">
-              <CloudRain className="w-3 h-3 text-amber-400" />
-              Intensity:{' '}
-              <strong>{currentSummary.rainfall_mm_hr} mm/hr</strong>
+            <span className="flex items-center gap-1 sm:gap-1.5 text-amber-300 bg-amber-950/40 px-1.5 sm:px-2 py-0.5 rounded border border-amber-800/40 text-[10px] sm:text-[11px] shrink-0">
+              <CloudRain className="w-3 h-3 text-amber-400 shrink-0" />
+              <span>{currentSummary.rainfall_mm_hr} mm/h</span>
             </span>
           )}
         </div>
