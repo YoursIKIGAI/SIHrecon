@@ -10,7 +10,7 @@ import {
   EngineMode,
 } from '../types';
 
-const API_BASE = '/api';
+const API_BASE = 'https://sihrecon.onrender.com/api';
 
 export const apiClient = {
   async getStatus(): Promise<SystemStatus> {
