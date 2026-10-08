@@ -66,7 +66,7 @@
   animation: pulse-ring 1.4s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
 }
 
-/* Offset Leaflet zoom controls so they don't overlap bottom timeline slider */
+
 .leaflet-bottom.leaflet-right {
   margin-bottom: 5.25rem !important;
   margin-right: 0.75rem !important;
