@@ -1,0 +1,14 @@
+{
+  "name": "urban-flood-system-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Root orchestrator for Urban Flood Nowcasting and Safe Routing System",
+  "scripts": {
+    "install:frontend": "npm --prefix frontend install",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:frontend": "npm --prefix frontend run build",
+    "preview": "npm --prefix frontend run preview",
+    "dev": "npm --prefix frontend run dev",
+    "start": "npm --prefix frontend run dev"
+  }
+}

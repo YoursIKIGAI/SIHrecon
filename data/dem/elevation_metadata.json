@@ -1,0 +1,23 @@
+{
+  "grid_bounds": {
+    "min_lat": 19.055,
+    "max_lat": 19.095,
+    "min_lon": 72.850,
+    "max_lon": 72.905
+  },
+  "rows": 40,
+  "cols": 50,
+  "cell_width_m": 115.0,
+  "cell_height_m": 111.0,
+  "cell_area_m2": 12765.0,
+  "elevation_range_m": {
+    "min": 1.2,
+    "max": 48.5,
+    "mean": 18.4
+  },
+  "choke_points": [
+    {"name": "Milan Subway Underpass", "lat": 19.073, "lon": 72.874, "elevation_m": 1.4, "type": "bowl_depression"},
+    {"name": "King's Circle Sump Basin", "lat": 19.067, "lon": 72.864, "elevation_m": 1.7, "type": "bowl_depression"},
+    {"name": "Kurla Creek Lowland", "lat": 19.082, "lon": 72.883, "elevation_m": 2.0, "type": "coastal_drainage"}
+  ]
+}

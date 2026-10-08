@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-10-08T10:00:00",
+  "city": "Metro Basin Coastal Corridor",
+  "forecast": [
+    {"minutes": 0, "rainfall_mm_hr": 30.0},
+    {"minutes": 30, "rainfall_mm_hr": 85.0},
+    {"minutes": 60, "rainfall_mm_hr": 125.0},
+    {"minutes": 90, "rainfall_mm_hr": 140.0},
+    {"minutes": 120, "rainfall_mm_hr": 95.0},
+    {"minutes": 180, "rainfall_mm_hr": 40.0}
+  ],
+  "radar_station": "METRO-DOPPLER-01",
+  "source": "Synthetic Monsoon Forecast Benchmark"
+}
