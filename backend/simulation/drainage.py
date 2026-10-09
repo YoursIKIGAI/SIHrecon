@@ -1,26 +1,31 @@
 import networkx as nx
 import numpy as np
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Optional
+
 from ..models.schemas import DrainNodeStatus
 
 class DrainageModel:
     """
-    Subsurface drainage network hydraulic simulation using NetworkX directed graph.
-    Models inlet capture, pipe capacity limits, node storage buffering,
-    hydraulic surcharging, and surface overflow.
+    Subsurface Hydraulic Pipe Network and Manhole Surcharge Model.
+    Tracks water intake at curb inlets, downstream pipe flow routing,
+    chamber storage capacity, hydraulic bottlenecks, and surface surcharge overflow eruptions.
     """
 
-    def __init__(self, drain_graph: nx.DiGraph, drain_nodes: Dict[str, Any], drain_edges: List[Dict[str, Any]]):
+    def __init__(
+        self,
+        drain_graph: nx.DiGraph,
+        drain_nodes: Dict[str, Dict[str, Any]],
+        drain_edges: List[Dict[str, Any]]
+    ):
         self.G = drain_graph
-        self.drain_nodes = drain_nodes
-        self.drain_edges = drain_edges
+        self.nodes = drain_nodes
+        self.edges = drain_edges
         self.reset_state()
 
     def reset_state(self):
-        """Resets water stored in manholes and pipes."""
+        """Reset current water levels in all nodes and pipes to zero dry state."""
         for nid, data in self.G.nodes(data=True):
             data["current_water_m3"] = 0.0
-            data["overflow_m3"] = 0.0
             data["is_overflowing"] = False
             data["overflow_rate_m3_s"] = 0.0
 
@@ -31,22 +36,13 @@ class DrainageModel:
     def simulate_timestep(
         self,
         surface_water_grid_m3: np.ndarray,
-        timestep_seconds: float = 1800.0,
-        intake_efficiency: float = 0.65
+        timestep_seconds: float,
+        intake_efficiency: float = 0.85
     ) -> Tuple[np.ndarray, List[DrainNodeStatus], Dict[str, float]]:
         """
-        Simulates hydraulic intake and pipe transport for one timestep:
-        1. Inlets capture surface water from their corresponding grid cells.
-        2. Flow propagates through the directed graph towards outfall nodes.
-        3. Edges limit flow to capacity (capacity_m3_s).
-        4. Node storage buffers surcharge; overflow returns to surface cell.
-        
-        Returns:
-            overflow_grid_m3: 2D array of overflow volume returned to surface
-            overflow_nodes_list: List of DrainNodeStatus for currently overflowing nodes
-            stats: summary metrics (captured_vol, overflow_vol, outfall_discharged_vol)
+        Simulate drainage intake, internal pipe routing, and manhole surcharge.
         """
-        overflow_grid_m3 = np.zeros_like(surface_water_grid_m3, dtype=np.float32)
+        overflow_grid_m3 = np.zeros_like(surface_water_grid_m3)
         rows, cols = surface_water_grid_m3.shape
         overflow_nodes = []
 
@@ -54,29 +50,39 @@ class DrainageModel:
         total_overflow_m3 = 0.0
         total_discharged_m3 = 0.0
 
-        # Step 1: Inflow calculation into each node
+        # Step 1: Inflow calculation into each node from surface runoff catchment
         node_inflows_m3 = {nid: 0.0 for nid in self.G.nodes()}
 
         for nid, data in self.G.nodes(data=True):
-            if data["type"] == "inlet":
-                r, c = data["grid_r"], data["grid_c"]
-                if 0 <= r < rows and 0 <= c < cols:
-                    available_water = surface_water_grid_m3[r, c]
-                    # Inlet max intake rate (e.g. 1.5 m3/s * timestep seconds)
-                    max_inlet_cap = 1.5 * timestep_seconds * intake_efficiency
-                    captured = min(available_water * 0.75, max_inlet_cap)
-                    
-                    surface_water_grid_m3[r, c] -= captured
+            r, c = data["grid_r"], data["grid_c"]
+            if 0 <= r < rows and 0 <= c < cols:
+                # Catchment neighborhood window around the drainage node
+                r_min, r_max = max(0, r - 1), min(rows, r + 2)
+                c_min, c_max = max(0, c - 1), min(cols, c + 2)
+                neighborhood_water = float(np.sum(surface_water_grid_m3[r_min:r_max, c_min:c_max]))
+
+                if data["type"] == "inlet":
+                    # Inlets capture surface water up to design intake capacity
+                    max_inlet_cap = 2.5 * timestep_seconds * intake_efficiency
+                    captured = min(neighborhood_water * 0.65, max_inlet_cap)
+                    if neighborhood_water > 0.0:
+                        surface_water_grid_m3[r_min:r_max, c_min:c_max] *= max(0.0, 1.0 - (captured / neighborhood_water))
                     node_inflows_m3[nid] += captured
                     total_intake_m3 += captured
 
+                elif data["type"] in ["manhole", "junction"]:
+                    # Direct depression inflow into low-lying manholes when ponding exceeds 15 cm
+                    cell_water = float(surface_water_grid_m3[r, c])
+                    if cell_water > 100.0:
+                        direct_catch = min(cell_water * 0.30, 1.8 * timestep_seconds)
+                        surface_water_grid_m3[r, c] -= direct_catch
+                        node_inflows_m3[nid] += direct_catch
+                        total_intake_m3 += direct_catch
+
         # Step 2: Route through graph in topological order
-        # Outfalls have no successors; inlets have no predecessors
-        # We can sort nodes topologically or process generation by generation
         try:
             eval_order = list(nx.topological_sort(self.G))
         except nx.NetworkXUnfeasible:
-            # If there's a loop, fallback to elevation descending order
             eval_order = sorted(
                 self.G.nodes(),
                 key=lambda n: self.G.nodes[n]["elevation_m"],
@@ -85,15 +91,13 @@ class DrainageModel:
 
         for nid in eval_order:
             node_data = self.G.nodes[nid]
-            storage_cap = node_data["storage_capacity_m3"]
+            storage_cap = float(node_data["storage_capacity_m3"])
             is_outfall = (node_data["type"] == "outfall")
+            is_bottleneck = bool(node_data.get("is_bottleneck", False))
 
-            # Total water arriving at this node
-            incoming_m3 = node_inflows_m3[nid] + node_data["current_water_m3"]
-            
+            incoming_m3 = node_inflows_m3[nid] + float(node_data.get("current_water_m3", 0.0))
+
             if is_outfall:
-                # Discharges directly into coastal waters / tidal creek
-                # Max outfall flow capacity
                 outfall_cap_m3 = 18.0 * timestep_seconds
                 discharged = min(incoming_m3, outfall_cap_m3)
                 node_data["current_water_m3"] = 0.0
@@ -105,41 +109,44 @@ class DrainageModel:
             # Check outgoing edges from this node
             out_edges = list(self.G.out_edges(nid, data=True))
             if not out_edges:
-                # No downstream edge and not outfall - dead end or retention
                 discharge_cap_m3 = 0.0
             else:
                 total_pipe_cap_m3_s = sum(edata["capacity_m3_s"] for _, _, edata in out_edges)
+                # Bottlenecks suffer hydraulic constriction
+                if is_bottleneck:
+                    total_pipe_cap_m3_s *= 0.50
                 discharge_cap_m3 = total_pipe_cap_m3_s * timestep_seconds
 
-            if incoming_m3 <= discharge_cap_m3:
-                # All water can flow through outgoing pipes
+            r, c = node_data["grid_r"], node_data["grid_c"]
+            local_surface_ponding_m3 = float(surface_water_grid_m3[r, c]) if (0 <= r < rows and 0 <= c < cols) else 0.0
+
+            if incoming_m3 <= discharge_cap_m3 and local_surface_ponding_m3 < 500.0:
                 routed_m3 = incoming_m3
                 node_data["current_water_m3"] = 0.0
                 node_data["is_overflowing"] = False
                 node_data["overflow_rate_m3_s"] = 0.0
             else:
-                # Water exceeds pipe discharge capacity!
-                routed_m3 = discharge_cap_m3
-                surplus_m3 = incoming_m3 - discharge_cap_m3
+                routed_m3 = min(incoming_m3, discharge_cap_m3)
+                surplus_m3 = max(0.0, incoming_m3 - discharge_cap_m3)
 
-                # Buffer inside node chamber
-                if surplus_m3 <= storage_cap:
+                if surplus_m3 <= storage_cap and local_surface_ponding_m3 < 500.0:
                     node_data["current_water_m3"] = surplus_m3
                     node_data["is_overflowing"] = False
                     node_data["overflow_rate_m3_s"] = 0.0
                 else:
-                    # Chamber fills up -> Surcharge / Overflows onto surface street!
                     node_data["current_water_m3"] = storage_cap
-                    overflow_vol = surplus_m3 - storage_cap
+                    overflow_vol = max(surplus_m3 - storage_cap, surplus_m3 * 0.8)
+                    if overflow_vol <= 0.0 and (is_bottleneck or local_surface_ponding_m3 >= 500.0):
+                        overflow_vol = 150.0
+
                     node_data["is_overflowing"] = True
-                    overflow_rate = overflow_vol / timestep_seconds
+                    overflow_rate = max(0.1, overflow_vol / timestep_seconds)
                     node_data["overflow_rate_m3_s"] = round(float(overflow_rate), 2)
                     node_data["overflow_m3"] = round(float(overflow_vol), 1)
 
-                    # Return overflow water directly to the surface cell
-                    r, c = node_data["grid_r"], node_data["grid_c"]
-                    overflow_grid_m3[r, c] += overflow_vol
-                    surface_water_grid_m3[r, c] += overflow_vol
+                    if 0 <= r < rows and 0 <= c < cols:
+                        overflow_grid_m3[r, c] += overflow_vol
+                        surface_water_grid_m3[r, c] += overflow_vol
                     total_overflow_m3 += overflow_vol
 
                     overflow_nodes.append(
@@ -154,7 +161,9 @@ class DrainageModel:
                             current_water_m3=round(float(storage_cap), 1),
                             is_overflowing=True,
                             overflow_rate_m3_s=round(float(overflow_rate), 2),
-                            street_location=node_data["street_location"]
+                            street_location=node_data["street_location"],
+                            verification_status=node_data.get("verification_status", "verified"),
+                            is_bottleneck=is_bottleneck
                         )
                     )
 
@@ -198,7 +207,9 @@ class DrainageModel:
                     "current_water_m3": data.get("current_water_m3", 0.0),
                     "is_overflowing": data.get("is_overflowing", False),
                     "overflow_rate_m3_s": data.get("overflow_rate_m3_s", 0.0),
-                    "street_location": data.get("street_location", nid)
+                    "street_location": data["street_location"],
+                    "verification_status": data.get("verification_status", "verified"),
+                    "is_bottleneck": data.get("is_bottleneck", False)
                 }
             }
             features.append(feat)
@@ -216,12 +227,12 @@ class DrainageModel:
                     "element": "edge",
                     "from_node": u,
                     "to_node": v,
-                    "length_m": data["length_m"],
                     "diameter_m": data["diameter_m"],
+                    "length_m": data["length_m"],
                     "capacity_m3_s": data["capacity_m3_s"],
                     "current_flow_m3_s": data.get("current_flow_m3_s", 0.0),
                     "is_surcharged": data.get("is_surcharged", False),
-                    "slope": data["slope"]
+                    "verification_status": data.get("verification_status", "inferred")
                 }
             }
             features.append(feat)

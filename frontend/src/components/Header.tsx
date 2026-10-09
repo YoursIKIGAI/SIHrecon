@@ -16,9 +16,13 @@ import {
   ChevronDown,
   Menu,
   X,
-  SlidersHorizontal
+  SlidersHorizontal,
+  ShieldAlert,
+  History,
+  TestTube2,
+  Sparkles
 } from 'lucide-react';
-import { ScenarioInfo, EngineMode } from '../types';
+import { ScenarioInfo, EngineMode, SimulationMode, HistoricalEventInfo } from '../types';
 
 interface HeaderProps {
   scenarios: Record<string, ScenarioInfo>;
@@ -41,6 +45,14 @@ interface HeaderProps {
   isWsConnected?: boolean;
   isAutoUpdating?: boolean;
   onToggleAutoUpdate?: () => void;
+  // Upgraded Mode & Alert Props
+  simulationMode?: SimulationMode;
+  onSelectSimulationMode?: (mode: SimulationMode) => void;
+  historicalEvents?: HistoricalEventInfo[];
+  selectedHistoricalEvent?: string;
+  onSelectHistoricalEvent?: (eventId: string) => void;
+  activeAlertsCount?: number;
+  onOpenAlertsModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -64,6 +76,13 @@ export const Header: React.FC<HeaderProps> = ({
   isWsConnected = false,
   isAutoUpdating = false,
   onToggleAutoUpdate,
+  simulationMode = 'live',
+  onSelectSimulationMode,
+  historicalEvents = [],
+  selectedHistoricalEvent,
+  onSelectHistoricalEvent,
+  activeAlertsCount = 0,
+  onOpenAlertsModal,
 }) => {
   const [showRadarMenu, setShowRadarMenu] = useState<boolean>(false);
   const [showMobileMenu, setShowMobileMenu] = useState<boolean>(false);
@@ -96,7 +115,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <>
       <header className="h-14 bg-slate-950/95 border-b border-cyan-500/20 px-3 sm:px-4 flex items-center justify-between z-30 backdrop-blur-xl shrink-0 shadow-lg shadow-black/60 select-none">
-        {/* Left: Brand & City Selector */}
+        {/* Left: Brand, City Selector & Mode Selector */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <div className="relative">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-cyan-500/30">
@@ -114,9 +133,6 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="font-extrabold text-xs tracking-wider text-white font-mono flex items-center gap-1">
               <span className="hidden xl:inline">METRO FLOOD NOWCAST</span>
               <span className="xl:hidden">NOWCAST</span>
-              <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-sans font-semibold hidden 2xl:inline">
-                COMMAND
-              </span>
             </span>
 
             {/* City Dropdown */}
@@ -135,18 +151,53 @@ export const Header: React.FC<HeaderProps> = ({
               </select>
             </div>
 
-            {isWsConnected && (
-              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-700/60 items-center gap-1 animate-pulse hidden sm:flex">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                LIVE
-              </span>
-            )}
+            {/* Simulation Mode Toggle (Live / Historical / Demo) */}
+            <div className="hidden md:flex items-center bg-slate-900/90 border border-slate-800 p-0.5 rounded-lg text-[11px] font-mono shadow-inner">
+              <button
+                onClick={() => onSelectSimulationMode?.('live')}
+                className={`px-2 py-0.5 rounded-md font-bold transition-all flex items-center gap-1 ${
+                  simulationMode === 'live'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Live Hydrodynamic Nowcasting Mode"
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${simulationMode === 'live' ? 'bg-white' : 'bg-emerald-500'}`} />
+                <span>Live</span>
+              </button>
+
+              <button
+                onClick={() => onSelectSimulationMode?.('historical')}
+                className={`px-2 py-0.5 rounded-md font-bold transition-all flex items-center gap-1 ${
+                  simulationMode === 'historical'
+                    ? 'bg-amber-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Historical Event Replay & Ground-Truth Validation"
+              >
+                <History className="w-3 h-3" />
+                <span>Historical</span>
+              </button>
+
+              <button
+                onClick={() => onSelectSimulationMode?.('demo')}
+                className={`px-2 py-0.5 rounded-md font-bold transition-all flex items-center gap-1 ${
+                  simulationMode === 'demo'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Demonstration Stress-Test Scenario"
+              >
+                <TestTube2 className="w-3 h-3" />
+                <span>Demo</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Center: Engine Mode Switcher & Doppler dBZ (Desktop & Tablet) */}
+        {/* Center: Engine Mode Switcher & Doppler dBZ */}
         <div className="hidden lg:flex items-center gap-2.5 shrink-0">
-          {/* Mode Toggle */}
+          {/* Mode Toggle: Physics vs AI Surrogate */}
           <div className="bg-slate-900/90 p-0.5 rounded-lg border border-slate-800 flex items-center gap-0.5 shadow-inner">
             <button
               onClick={() => onToggleEngineMode('physics')}
@@ -173,7 +224,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </div>
 
-          {/* Doppler dBZ */}
+          {/* Radar Reflectivity / Doppler */}
           <div className="hidden xl:flex bg-slate-900/90 border border-slate-800 px-2.5 py-1 rounded-lg items-center gap-1.5 text-xs font-mono">
             <Radio className="w-3 h-3 text-red-400 animate-pulse" />
             <span className="text-slate-400 text-[10px]">Radar:</span>
@@ -183,350 +234,173 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right Desktop Controls (>= lg: Desktop and Laptops) */}
+        {/* Right Desktop Controls */}
         <div className="hidden lg:flex items-center gap-2 shrink-0">
-          {/* Compact Scenario Selector Dropdown */}
-          <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs">
-            <Zap className="w-3.5 h-3.5 text-amber-400 mr-1.5 shrink-0" />
-            <select
-              value={currentScenario}
-              onChange={(e) => onSelectScenario(e.target.value)}
-              className="bg-transparent text-xs font-bold text-amber-300 focus:outline-none cursor-pointer uppercase"
-              title="Select Rainfall Regime"
-            >
-              {Object.keys(scenarios).map((k) => (
-                <option key={k} value={k} className="bg-slate-900 text-white">
-                  {k.toUpperCase()}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Historical Event Dropdown (When in Historical Mode) OR Scenario Selector (When in Live/Demo) */}
+          {simulationMode === 'historical' && historicalEvents.length > 0 ? (
+            <div className="flex items-center bg-amber-950/80 border border-amber-700/80 rounded-lg px-2 py-1 text-xs">
+              <History className="w-3.5 h-3.5 text-amber-400 mr-1.5 shrink-0" />
+              <select
+                value={selectedHistoricalEvent || historicalEvents[0]?.id}
+                onChange={(e) => onSelectHistoricalEvent?.(e.target.value)}
+                className="bg-transparent text-xs font-bold text-amber-200 focus:outline-none cursor-pointer max-w-[200px] truncate"
+              >
+                {historicalEvents.map((ev) => (
+                  <option key={ev.id} value={ev.id} className="bg-slate-900 text-white">
+                    {ev.title} ({ev.event_date})
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs">
+              <Zap className="w-3.5 h-3.5 text-amber-400 mr-1.5 shrink-0" />
+              <select
+                value={currentScenario}
+                onChange={(e) => onSelectScenario(e.target.value)}
+                className="bg-transparent text-xs font-bold text-amber-300 focus:outline-none cursor-pointer uppercase"
+                title="Select Rainfall Regime"
+              >
+                {Object.keys(scenarios).map((k) => (
+                  <option key={k} value={k} className="bg-slate-900 text-white">
+                    {k.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
-          {/* Radar Feeds Dropdown */}
-          <div className="relative">
+          {/* Officer Alert Dashboard Trigger Button */}
+          {onOpenAlertsModal && (
             <button
-              onClick={() => setShowRadarMenu(!showRadarMenu)}
-              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-cyan-950/70 border border-cyan-800 text-cyan-300 hover:bg-cyan-900 transition-colors flex items-center gap-1.5"
-              title="Select Doppler radar or historical event"
-            >
-              <Radio className="w-3 h-3 text-cyan-400" />
-              <span>RADAR</span>
-              <ChevronDown className="w-3 h-3" />
-            </button>
-
-            {showRadarMenu && (
-              <div className="absolute right-0 top-full mt-2 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 z-40 animate-in fade-in">
-                <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 mb-1">
-                  Radar & Historical Feeds
-                </div>
-                <button
-                  onClick={() => {
-                    setShowRadarMenu(false);
-                    onSelectRadarFeed?.('imd_historical', undefined, 'mumbai_2005');
-                  }}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-xs text-slate-200 transition-colors flex flex-col"
-                >
-                  <span className="font-semibold text-cyan-300">Mumbai 2005 Cloudburst</span>
-                  <span className="text-[10px] text-slate-400">944mm IMD Benchmark</span>
-                </button>
-                <button
-                  onClick={handleSelectLiveOwm}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-xs text-slate-200 transition-colors flex flex-col mt-1"
-                >
-                  <span className="font-semibold text-emerald-300 flex items-center gap-1">
-                    <span>OpenWeatherMap Live</span>
-                    <Key className="w-3 h-3 text-emerald-400" />
-                  </span>
-                  <span className="text-[10px] text-slate-400">Live 3h forecast via API Key</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Auto-Update */}
-          {onToggleAutoUpdate && (
-            <button
-              onClick={onToggleAutoUpdate}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg border flex items-center gap-1.5 transition-all ${
-                isAutoUpdating
-                  ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300 shadow'
-                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+              onClick={onOpenAlertsModal}
+              className={`px-2.5 py-1 text-xs font-bold rounded-lg border flex items-center gap-1.5 transition-all relative ${
+                activeAlertsCount > 0
+                  ? 'bg-red-950/80 border-red-600 text-red-200 hover:bg-red-900'
+                  : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
               }`}
-              title={isAutoUpdating ? 'Auto-Update ON' : 'Auto-Update OFF'}
+              title="Open Officer Alert Emergency Dashboard"
             >
-              <RefreshCw className={`w-3 h-3 ${isAutoUpdating ? 'animate-spin text-emerald-400' : ''}`} />
-              <span className="text-[11px]">{isAutoUpdating ? 'AUTO' : 'OFF'}</span>
+              <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
+              <span>ALERTS</span>
+              {activeAlertsCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-red-600 text-white text-[10px] font-mono flex items-center justify-center font-bold">
+                  {activeAlertsCount}
+                </span>
+              )}
             </button>
           )}
 
-          {/* Run Button */}
+          {/* Run Nowcast / Replay Button */}
           <button
             onClick={onRunSimulation}
             disabled={isLoading}
             className={`px-3 py-1 text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all shadow-md ${
-              isLoading
-                ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                : 'bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-emerald-600/30 hover:scale-[1.02]'
+              simulationMode === 'historical'
+                ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-900/40'
+                : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40'
             }`}
           >
-            {isLoading ? (
-              <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : (
-              <Play className="w-3 h-3 fill-current" />
-            )}
-            <span>{isLoading ? 'Running...' : 'RUN'}</span>
+            <Play className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>{isLoading ? 'Simulating...' : simulationMode === 'historical' ? 'Run Replay' : 'Run Nowcast'}</span>
           </button>
 
-          {executionTimeMs !== undefined && (
-            <div className="bg-slate-900/80 border border-slate-800 px-2 py-1 rounded-md text-[11px] font-mono text-emerald-400">
-              {executionTimeMs.toFixed(0)}ms
-            </div>
-          )}
-
-          <div className="w-px h-5 bg-slate-800" />
-
-          {/* Quick tools */}
-          <button
-            onClick={onOpenTrainModel}
-            className="p-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-700/60 text-cyan-300 rounded-lg transition-colors"
-            title="Open AI / ML Surrogate Studio"
-          >
-            <Cpu className="w-4 h-4" />
-          </button>
-
+          {/* Scientific Validation Modal Trigger */}
           <button
             onClick={onOpenValidation}
-            className="p-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-blue-700 text-blue-300 rounded-lg transition-colors"
-            title="Open Validation Report"
+            className="p-1.5 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-800 transition-colors"
+            title="Scientific Accuracy Benchmark & Validation"
           >
-            <BarChart3 className="w-4 h-4" />
+            <BarChart3 className="w-4 h-4 text-emerald-400" />
           </button>
 
+          {/* Sound Mute Toggle */}
           <button
             onClick={onToggleSound}
-            className={`p-1.5 rounded-lg border transition-colors ${
-              soundEnabled
-                ? 'bg-red-950/80 border-red-700 text-red-300'
-                : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300'
-            }`}
-            title={soundEnabled ? 'Alarm Sound ACTIVE' : 'Alarm Sound MUTED'}
+            className="p-1.5 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-800 transition-colors"
+            title={soundEnabled ? 'Mute Siren Alarm' : 'Enable Siren Alarm'}
           >
-            {soundEnabled ? <Volume2 className="w-4 h-4 text-red-400" /> : <VolumeX className="w-4 h-4" />}
+            {soundEnabled ? (
+              <Volume2 className="w-4 h-4 text-cyan-400" />
+            ) : (
+              <VolumeX className="w-4 h-4" />
+            )}
           </button>
         </div>
 
-        {/* Compact Right Controls (< lg: Tablets & Mobile) */}
-        <div className="flex lg:hidden items-center gap-1.5 shrink-0">
-          {/* Scenario Selector Dropdown (Tablet view) */}
-          <div className="hidden sm:flex items-center bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs">
-            <Zap className="w-3 h-3 text-amber-400 mr-1.5 shrink-0" />
-            <select
-              value={currentScenario}
-              onChange={(e) => onSelectScenario(e.target.value)}
-              className="bg-transparent text-[11px] font-bold text-slate-200 focus:outline-none cursor-pointer"
+        {/* Mobile Hamburger Menu Toggle */}
+        <div className="flex lg:hidden items-center gap-1.5">
+          {onOpenAlertsModal && activeAlertsCount > 0 && (
+            <button
+              onClick={onOpenAlertsModal}
+              className="p-1.5 bg-red-950 border border-red-700 rounded-lg text-red-300 relative"
             >
-              {Object.keys(scenarios).map((k) => (
-                <option key={k} value={k} className="bg-slate-900 text-white">
-                  {k.toUpperCase()}
-                </option>
-              ))}
-            </select>
-          </div>
+              <ShieldAlert className="w-4 h-4" />
+              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-600 rounded-full text-[9px] text-white flex items-center justify-center font-bold">
+                {activeAlertsCount}
+              </span>
+            </button>
+          )}
 
-          {/* Primary RUN Button — Always visible and prominent */}
-          <button
-            onClick={onRunSimulation}
-            disabled={isLoading}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all shadow-md ${
-              isLoading
-                ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                : 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-emerald-600/30'
-            }`}
-          >
-            {isLoading ? (
-              <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : (
-              <Play className="w-3 h-3 fill-current" />
-            )}
-            <span className="hidden xs:inline sm:inline">{isLoading ? '...' : 'RUN'}</span>
-          </button>
-
-          {/* Hamburger / Menu Toggle for smaller viewports */}
           <button
             onClick={() => setShowMobileMenu(!showMobileMenu)}
-            className="p-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 rounded-lg transition-colors flex items-center justify-center"
-            title="Toggle Menu & Simulation Settings"
+            className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-300"
           >
-            {showMobileMenu ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+            {showMobileMenu ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
       </header>
 
-      {/* Mobile / Tablet Full-Featured Drawer (< lg) */}
+      {/* Mobile Drawer Menu */}
       {showMobileMenu && (
-        <div className="lg:hidden fixed inset-x-0 top-14 z-40 bg-slate-950/95 border-b border-cyan-500/30 p-4 backdrop-blur-2xl shadow-2xl flex flex-col gap-3.5 animate-in slide-in-from-top-4 duration-200 max-h-[calc(100vh-4rem)] overflow-y-auto">
-          {/* Engine Mode Toggle */}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] uppercase font-bold text-slate-400">Simulation Engine</span>
-            <div className="grid grid-cols-2 gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
-              <button
-                onClick={() => {
-                  onToggleEngineMode('physics');
-                  setShowMobileMenu(false);
-                }}
-                className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 ${
-                  engineMode === 'physics'
-                    ? 'bg-blue-600 text-white shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Activity className="w-3.5 h-3.5" />
-                <span>Hydro Physics</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  onToggleEngineMode('ml_surrogate');
-                  setShowMobileMenu(false);
-                }}
-                className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 ${
-                  engineMode === 'ml_surrogate'
-                    ? 'bg-cyan-600 text-white shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <BrainCircuit className="w-3.5 h-3.5" />
-                <span>AI Surrogate</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Rainfall Scenarios & Radar */}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] uppercase font-bold text-slate-400">Rainfall Regime</span>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-              {Object.entries(scenarios).map(([key, sc]) => (
+        <div className="lg:hidden bg-slate-950 border-b border-slate-800 px-4 py-3 flex flex-col gap-2.5 z-20 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400 uppercase text-[10px] font-bold">Simulation Mode:</span>
+            <div className="flex gap-1">
+              {(['live', 'historical', 'demo'] as SimulationMode[]).map((m) => (
                 <button
-                  key={key}
+                  key={m}
                   onClick={() => {
-                    onSelectScenario(key);
+                    onSelectSimulationMode?.(m);
                     setShowMobileMenu(false);
                   }}
-                  className={`py-1.5 px-2 text-xs font-semibold rounded-lg border text-center transition-all ${
-                    currentScenario === key
-                      ? 'bg-blue-600 border-blue-500 text-white shadow'
-                      : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+                  className={`px-2 py-1 rounded text-xs font-bold capitalize ${
+                    simulationMode === m ? 'bg-blue-600 text-white' : 'bg-slate-900 text-slate-300'
                   }`}
                 >
-                  {key.toUpperCase()}
+                  {m}
                 </button>
               ))}
             </div>
+          </div>
 
-            <div className="grid grid-cols-2 gap-2 mt-1">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400 uppercase text-[10px] font-bold">Engine Pipeline:</span>
+            <div className="flex gap-1">
               <button
-                onClick={() => {
-                  setShowMobileMenu(false);
-                  onSelectRadarFeed?.('imd_historical', undefined, 'mumbai_2005');
-                }}
-                className="py-1.5 px-2 bg-cyan-950/60 border border-cyan-800 text-cyan-300 hover:bg-cyan-900 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5"
+                onClick={() => onToggleEngineMode('physics')}
+                className={`px-2 py-1 rounded text-xs font-bold ${engineMode === 'physics' ? 'bg-blue-600 text-white' : 'bg-slate-900 text-slate-300'}`}
               >
-                <Radio className="w-3.5 h-3.5" />
-                <span>Mumbai 2005 Event</span>
+                Physics
               </button>
-
               <button
-                onClick={handleSelectLiveOwm}
-                className="py-1.5 px-2 bg-emerald-950/60 border border-emerald-800 text-emerald-300 hover:bg-emerald-900 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5"
+                onClick={() => onToggleEngineMode('ml_surrogate')}
+                className={`px-2 py-1 rounded text-xs font-bold ${engineMode === 'ml_surrogate' ? 'bg-cyan-600 text-white' : 'bg-slate-900 text-slate-300'}`}
               >
-                <Key className="w-3.5 h-3.5" />
-                <span>Live Weather API</span>
+                AI Surrogate
               </button>
             </div>
           </div>
 
-          {/* Tools & Auto Update */}
-          <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800/80">
-            {onToggleAutoUpdate && (
-              <button
-                onClick={onToggleAutoUpdate}
-                className={`py-2 px-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 ${
-                  isAutoUpdating
-                    ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300'
-                    : 'bg-slate-900 border-slate-800 text-slate-400'
-                }`}
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isAutoUpdating ? 'animate-spin text-emerald-400' : ''}`} />
-                <span>{isAutoUpdating ? 'Auto: ON' : 'Auto: OFF'}</span>
-              </button>
-            )}
-
-            <button
-              onClick={() => {
-                setShowMobileMenu(false);
-                onOpenTrainModel();
-              }}
-              className="py-2 px-2 bg-slate-900 border border-slate-800 text-cyan-300 hover:bg-slate-800 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5"
-            >
-              <Cpu className="w-3.5 h-3.5" />
-              <span>AI Studio</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setShowMobileMenu(false);
-                onOpenValidation();
-              }}
-              className="py-2 px-2 bg-slate-900 border border-slate-800 text-blue-300 hover:bg-slate-800 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5"
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              <span>Validation</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* OpenWeatherMap API Key Modal */}
-      {showApiKeyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 shadow-2xl flex flex-col gap-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h4 className="font-bold text-sm text-white flex items-center gap-2">
-                <Key className="w-4 h-4 text-emerald-400" />
-                OpenWeatherMap Live API Integration
-              </h4>
-              <button
-                onClick={() => setShowApiKeyModal(false)}
-                className="text-slate-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Enter your free OpenWeatherMap API Key to stream live rainfall forecasts directly into the hydrodynamic nowcaster.
-            </p>
-            <input
-              type="text"
-              placeholder="Paste OpenWeatherMap API Key (32-char hex)"
-              value={owmApiKey}
-              onChange={(e) => setOwmApiKey(e.target.value)}
-              className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-            />
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setShowApiKeyModal(false)}
-                className="px-3 py-1.5 text-xs text-slate-400 hover:text-white"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleApplyApiKey}
-                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition-colors"
-              >
-                Connect & Nowcast
-              </button>
-            </div>
-          </div>
+          <button
+            onClick={() => {
+              setShowMobileMenu(false);
+              onRunSimulation();
+            }}
+            className="w-full py-2 bg-blue-600 text-white font-bold rounded-lg mt-1"
+          >
+            Execute Simulation
+          </button>
         </div>
       )}
     </>

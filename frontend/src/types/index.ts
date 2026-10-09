@@ -1,6 +1,7 @@
 export type RiskLevel = 'Safe' | 'Minor' | 'Moderate' | 'Severe' | 'Critical';
 export type EngineMode = 'physics' | 'ml_surrogate';
 export type BasemapType = 'dark' | 'satellite' | 'streets' | 'topo';
+export type SimulationMode = 'live' | 'historical' | 'demo';
 
 export interface RainfallPoint {
   minutes: number;
@@ -35,6 +36,7 @@ export interface FloodedRoadSegment {
   length_m: number;
   coordinates: [number, number][];
   is_blocked: boolean;
+  elevation_m?: number;
 }
 
 export interface DrainNodeStatus {
@@ -49,6 +51,22 @@ export interface DrainNodeStatus {
   is_overflowing: boolean;
   overflow_rate_m3_s: number;
   street_location: string;
+  verification_status?: 'verified' | 'inferred';
+  is_bottleneck?: boolean;
+}
+
+export interface OfficerAlert {
+  alert_id: string;
+  city: string;
+  locality: string;
+  severity: 'Low' | 'Moderate' | 'High' | 'Critical';
+  timestamp: string;
+  trigger_condition: string;
+  supporting_data: string;
+  confidence: string;
+  recommended_action: string;
+  status: 'active' | 'acknowledged' | 'resolved' | 'dismissed';
+  is_test_alert?: boolean;
 }
 
 export interface SimulationResponse {
@@ -71,6 +89,12 @@ export interface SimulationResponse {
   };
   radar_reflectivity_dbz?: number;
   storm_track?: { minute: number; center_lat: number; center_lon: number; intensity_mm_hr: number }[];
+  city_key?: string;
+  city_name?: string;
+  simulation_mode?: SimulationMode;
+  event_id?: string;
+  alerts?: OfficerAlert[];
+  historical_observations_count?: number;
 }
 
 export interface RouteSegmentDetail {
@@ -80,10 +104,12 @@ export interface RouteSegmentDetail {
   water_depth_cm: number;
   risk_level: RiskLevel;
   coordinates: [number, number][];
+  is_blocked?: boolean;
+  elevation_m?: number;
 }
 
 export interface RouteOption {
-  route_type: 'normal' | 'flood_safe';
+  route_type: 'normal' | 'flood_safe' | 'alternative';
   coordinates: [number, number][];
   distance_km: number;
   estimated_time_minutes: number;
@@ -91,11 +117,13 @@ export interface RouteOption {
   max_water_depth_cm: number;
   flooded_segments_count: number;
   segments: RouteSegmentDetail[];
+  exposed_percentage?: number;
 }
 
 export interface RouteResponse {
   normal_route: RouteOption;
   safe_route: RouteOption;
+  alternative_route?: RouteOption;
   distance_difference_km: number;
   time_difference_minutes: number;
   avoided_flooded_roads: number;
@@ -156,7 +184,8 @@ export interface SystemStatus {
   engine_ready: boolean;
   ml_model_trained: boolean;
   active_city: string;
-  data_sources?: { dem: string; roads: string };
+  city_name?: string;
+  data_sources?: { dem: string; roads: string; drainage?: string };
   grid: {
     rows: number;
     cols: number;
@@ -164,22 +193,48 @@ export interface SystemStatus {
     bounds: { min_lat: number; max_lat: number; min_lon: number; max_lon: number };
   };
   network: { road_nodes: number; road_edges: number; drain_nodes: number; drain_edges: number };
+  active_alerts_count?: number;
 }
 
-// Fix 2: Radar feed types
 export interface RadarFeedResult {
   source: string;
+  city_key?: string;
   event?: string;
   forecast: RainfallPoint[];
   note: string;
 }
 
-// Fix 8: City config types
+export interface RoutePreset {
+  id: string;
+  name: string;
+  origin: [number, number];
+  destination: [number, number];
+  description: string;
+}
+
+export interface HistoricalEventInfo {
+  id: string;
+  title: string;
+  city_key?: string;
+  event_date: string;
+  duration_hours: number;
+  total_rainfall_mm: number;
+  peak_intensity_mm_hr: number;
+  description: string;
+  sources: string[];
+  affected_localities: string[];
+  observation_points_count: number;
+}
+
 export interface CityInfo {
   name: string;
+  state?: string;
   description: string;
   center_lat: number;
   center_lon: number;
   bounds: { min_lat: number; max_lat: number; min_lon: number; max_lon: number };
+  elevation_range?: { min_m: number; max_m: number; mean_m: number };
+  route_presets?: RoutePreset[];
+  historical_events?: HistoricalEventInfo[];
   dem_available: boolean;
 }

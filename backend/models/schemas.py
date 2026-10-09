@@ -17,6 +17,9 @@ class SimulationRequest(BaseModel):
     duration_minutes: int = 180
     soil_absorption_rate: Optional[float] = 5.0  # mm/hr infiltration capacity
     engine_mode: Optional[str] = "physics"       # "physics" or "ml_surrogate"
+    city_key: Optional[str] = None              # "delhi", "mumbai", "chennai"
+    simulation_mode: Optional[str] = "live"     # "live", "historical", "demo"
+    event_id: Optional[str] = None              # e.g. "delhi_2023_yamuna"
 
 class LocationCoord(BaseModel):
     lat: float
@@ -39,6 +42,8 @@ class FloodedRoadSegment(BaseModel):
     length_m: float
     coordinates: List[List[float]]  # [[lon, lat], [lon, lat]]
     is_blocked: bool
+    elevation_m: Optional[float] = None
+    speed_kmh: Optional[float] = None
 
 class DrainNodeStatus(BaseModel):
     node_id: str
@@ -52,6 +57,8 @@ class DrainNodeStatus(BaseModel):
     is_overflowing: bool
     overflow_rate_m3_s: float
     street_location: str
+    verification_status: Optional[str] = "verified"  # "verified", "inferred", "documented_bottleneck"
+    is_bottleneck: Optional[bool] = False
 
 class TimestepSummary(BaseModel):
     minutes: int
@@ -65,6 +72,22 @@ class TimestepSummary(BaseModel):
     total_surface_volume_m3: float
     total_drainage_volume_m3: float
 
+class OfficerAlert(BaseModel):
+    alert_id: str
+    city: str
+    locality: str
+    severity: str  # Critical, High, Moderate, Advisory
+    timestamp: str
+    trigger_condition: str
+    supporting_data: str
+    confidence: str
+    recommended_action: str
+    status: str = "active"  # active, acknowledged, resolved, dismissed
+    is_test_alert: bool = False
+
+class AlertStatusUpdateRequest(BaseModel):
+    status: str  # acknowledged, resolved, dismissed
+
 class SimulationResponse(BaseModel):
     execution_time_ms: float
     scenario: str
@@ -77,12 +100,19 @@ class SimulationResponse(BaseModel):
     grid_resolution: Dict[str, int]                        # rows, cols
     radar_reflectivity_dbz: Optional[float] = 52.0
     storm_track: Optional[List[Dict[str, Any]]] = None
+    city_key: Optional[str] = "mumbai"
+    city_name: Optional[str] = "Mumbai Metropolitan Region"
+    simulation_mode: Optional[str] = "live"                # "live", "historical", "demo"
+    event_id: Optional[str] = None
+    alerts: Optional[List[OfficerAlert]] = None
+    historical_observations_count: Optional[int] = 0
 
 class RouteRequest(BaseModel):
     origin: List[float] = Field(..., description="[longitude, latitude]")
     destination: List[float] = Field(..., description="[longitude, latitude]")
     mode: Optional[str] = "car"
     timestep_minutes: Optional[int] = 60
+    city_key: Optional[str] = None
 
 class RouteSegmentDetail(BaseModel):
     road_id: str
@@ -91,9 +121,11 @@ class RouteSegmentDetail(BaseModel):
     water_depth_cm: float
     risk_level: str
     coordinates: List[List[float]]
+    is_blocked: Optional[bool] = False
+    elevation_m: Optional[float] = None
 
 class RouteOption(BaseModel):
-    route_type: str  # "normal" or "flood_safe"
+    route_type: str  # "normal", "flood_safe", or "alternative"
     coordinates: List[List[float]]  # GeoJSON LineString coordinates [[lon, lat], ...]
     distance_km: float
     estimated_time_minutes: float
@@ -101,16 +133,19 @@ class RouteOption(BaseModel):
     max_water_depth_cm: float
     flooded_segments_count: int
     segments: List[RouteSegmentDetail]
+    exposed_percentage: Optional[float] = 0.0
 
 class RouteResponse(BaseModel):
     normal_route: RouteOption
     safe_route: RouteOption
+    alternative_route: Optional[RouteOption] = None
     distance_difference_km: float
     time_difference_minutes: float
     avoided_flooded_roads: int
     timestep_minutes: int
     is_rerouted: bool
     summary: str
+    city_key: Optional[str] = "mumbai"
 
 class ValidationMetrics(BaseModel):
     dataset_type: str
@@ -122,6 +157,7 @@ class ValidationMetrics(BaseModel):
     confusion_matrix: Dict[str, int]
     status_label: str
     notes: str
+    city_key: Optional[str] = "mumbai"
 
 class MLTrainingRequest(BaseModel):
     epochs: int = 150
@@ -147,3 +183,28 @@ class LocationSearchResult(BaseModel):
     lon: float
     category: str
     elevation_m: float
+    city_key: Optional[str] = None
+
+class HistoricalEventSummary(BaseModel):
+    id: str
+    city_key: str
+    title: str
+    event_date: str
+    total_rainfall_mm: float
+    peak_intensity_mm_hr: float
+    description: str
+    sources: List[str]
+    affected_localities: List[str]
+    observation_points_count: int
+    forecast_points: List[RainfallPoint]
+
+class HistoricalObservationPoint(BaseModel):
+    id: str
+    city_key: str
+    location_name: str
+    lat: float
+    lon: float
+    observed_depth_cm: float
+    severity: str
+    source: str
+    event_date: str

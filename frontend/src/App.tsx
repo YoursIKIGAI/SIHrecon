@@ -11,6 +11,9 @@ import {
   BasemapType, 
   MLTrainingResponse,
   CityInfo,
+  SimulationMode,
+  HistoricalEventInfo,
+  OfficerAlert,
 } from './types';
 import { Header } from './components/Header';
 import { TimeSlider } from './components/TimeSlider';
@@ -19,6 +22,7 @@ import { RoutingPanel } from './components/RoutingPanel';
 import { DrainagePanel } from './components/DrainagePanel';
 import { ValidationModal } from './components/ValidationModal';
 import { ModelTrainingModal } from './components/ModelTrainingModal';
+import { OfficerAlertModal } from './components/OfficerAlertModal';
 import { Legend } from './components/Legend';
 import { MapView } from './map/MapView';
 import { 
@@ -31,24 +35,25 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
-  PanelRightOpen
+  PanelRightOpen,
+  ShieldAlert
 } from 'lucide-react';
 
 const CITY_DEFAULTS: Record<string, { center: [number, number]; origin: [number, number]; destination: [number, number] }> = {
   mumbai: {
     center: [72.875, 19.075],
-    origin: [72.870, 19.062],
+    origin: [72.874, 19.073],
     destination: [72.868, 19.088],
   },
   delhi: {
-    center: [77.200, 28.650],
-    origin: [77.190, 28.610],
-    destination: [77.240, 28.670],
+    center: [77.215, 28.635],
+    origin: [77.218, 28.631],
+    destination: [77.228, 28.667],
   },
   chennai: {
-    center: [80.250, 13.060],
-    origin: [80.230, 13.030],
-    destination: [80.270, 13.090],
+    center: [80.220, 13.030],
+    origin: [80.222, 13.021],
+    destination: [80.217, 12.981],
   },
 };
 
@@ -60,6 +65,16 @@ export const App: React.FC = () => {
   const [isLoadingSimulation, setIsLoadingSimulation] = useState<boolean>(false);
   const [currentMinute, setCurrentMinute] = useState<number>(90);
   const [engineMode, setEngineMode] = useState<EngineMode>('physics');
+
+  // Simulation Mode state (Live / Historical / Demo)
+  const [simulationMode, setSimulationMode] = useState<SimulationMode>('live');
+  const [historicalEvents, setHistoricalEvents] = useState<HistoricalEventInfo[]>([]);
+  const [selectedHistoricalEvent, setSelectedHistoricalEvent] = useState<string>('');
+  const [historicalObservations, setHistoricalObservations] = useState<any>(null);
+
+  // Officer Alert Dashboard state
+  const [officerAlerts, setOfficerAlerts] = useState<OfficerAlert[]>([]);
+  const [isAlertsModalOpen, setIsAlertsModalOpen] = useState<boolean>(false);
 
   // Multi-city state
   const [activeCity, setActiveCity] = useState<string>('mumbai');
@@ -81,8 +96,8 @@ export const App: React.FC = () => {
   const [drainageGeoJson, setDrainageGeoJson] = useState<any>(null);
 
   // Routing state
-  const [origin, setOrigin] = useState<[number, number]>([72.870, 19.062]); // Downtown Central
-  const [destination, setDestination] = useState<[number, number]>([72.868, 19.088]); // Metro Airport
+  const [origin, setOrigin] = useState<[number, number]>([72.874, 19.073]);
+  const [destination, setDestination] = useState<[number, number]>([72.868, 19.088]);
   const [routingMode, setRoutingMode] = useState<string>('car');
   const [routeResult, setRouteResult] = useState<RouteResponse | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState<boolean>(false);
@@ -103,6 +118,7 @@ export const App: React.FC = () => {
   const [showDrainageLayer, setShowDrainageLayer] = useState<boolean>(true);
   const [showRoadsLayer, setShowRoadsLayer] = useState<boolean>(true);
   const [showRoutesLayer, setShowRoutesLayer] = useState<boolean>(true);
+  const [showHistoricalLayer, setShowHistoricalLayer] = useState<boolean>(true);
 
   // Responsive UI Dock Layout State
   const [isLeftDockOpen, setIsLeftDockOpen] = useState<boolean>(() =>
@@ -118,7 +134,6 @@ export const App: React.FC = () => {
     const handleResize = () => {
       const width = window.innerWidth;
       if (width < 1024) {
-        // Mutual exclusion on screens < 1024px: cannot have both open simultaneously
         setIsRightDockOpen((rightOpen) => {
           if (rightOpen) setIsLeftDockOpen(false);
           return rightOpen;
@@ -170,21 +185,45 @@ export const App: React.FC = () => {
     }
   }, [soundEnabled]);
 
+  // Fetch Route with active city bounds
+  const fetchRoute = useCallback(async (
+    orig: [number, number],
+    dest: [number, number],
+    minute: number,
+    mode: string,
+    cityKey: string = activeCity
+  ) => {
+    setIsLoadingRoute(true);
+    try {
+      const res = await apiClient.getRoute(orig, dest, minute, mode, cityKey);
+      setRouteResult(res);
+    } catch (err: any) {
+      console.error('Routing calculation failed:', err);
+    } finally {
+      setIsLoadingRoute(false);
+    }
+  }, [activeCity]);
+
   // 1. Initial Load: Scenarios, Cities, Drainage network, ML status, Initial Simulation
   useEffect(() => {
     const initApp = async () => {
       try {
-        const [scenariosData, citiesData, drainageData, mlStatus] = await Promise.all([
+        const [scenariosData, citiesData, drainageData, mlStatus, histEvents] = await Promise.all([
           apiClient.getScenarios().catch(() => ({})),
           apiClient.getCities().catch(() => ({})),
           apiClient.getDrainageNetwork().catch(() => null),
           apiClient.getMLStatus().catch(() => null),
+          apiClient.getHistoricalScenarios('mumbai').catch(() => []),
         ]);
 
         if (scenariosData) setScenarios(scenariosData);
         if (citiesData) setCities(citiesData);
         if (drainageData) setDrainageGeoJson(drainageData);
         if (mlStatus && mlStatus.metrics) setMlMetrics(mlStatus.metrics);
+        if (histEvents && histEvents.length > 0) {
+          setHistoricalEvents(histEvents);
+          setSelectedHistoricalEvent(histEvents[0].id);
+        }
 
         await handleRunSimulation('extreme', 'physics');
       } catch (err) {
@@ -223,11 +262,12 @@ export const App: React.FC = () => {
             if (message.type === 'simulation_update' && message.data) {
               setSimulationData(message.data);
               setIsAutoUpdating(!!message.auto_update);
+              if (message.data.alerts) setOfficerAlerts(message.data.alerts);
 
               const mapData = await apiClient.getFloodMap(currentMinute).catch(() => null);
               if (mapData) setFloodGeoJson(mapData);
 
-              fetchRoute(origin, destination, currentMinute, routingMode);
+              fetchRoute(origin, destination, currentMinute, routingMode, activeCity);
             }
           } catch (e) {
             console.error('WS parse error:', e);
@@ -259,9 +299,9 @@ export const App: React.FC = () => {
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       if (wsRef.current) wsRef.current.close();
     };
-  }, [currentMinute, origin, destination, routingMode]);
+  }, [currentMinute, origin, destination, routingMode, activeCity, fetchRoute]);
 
-  // 3. Run Simulation Handler
+  // 3. Run Simulation Handler (Nowcast or Custom)
   const handleRunSimulation = async (
     scenarioToRun: string = currentScenario,
     modeToRun: EngineMode = engineMode,
@@ -269,20 +309,29 @@ export const App: React.FC = () => {
   ) => {
     setIsLoadingSimulation(true);
     try {
-      const result = await apiClient.runSimulation(
-        scenarioToRun,
-        customRainfall,
-        180,
-        modeToRun
-      );
+      let result: SimulationResponse;
+
+      if (simulationMode === 'historical' && selectedHistoricalEvent) {
+        result = await apiClient.runHistoricalSimulation(activeCity, selectedHistoricalEvent, 180);
+      } else {
+        result = await apiClient.runSimulation(
+          scenarioToRun,
+          customRainfall,
+          180,
+          modeToRun,
+          activeCity
+        );
+      }
+
       setSimulationData(result);
       setCurrentScenario(scenarioToRun);
       setEngineMode(modeToRun);
+      if (result.alerts) setOfficerAlerts(result.alerts);
 
       const mapData = await apiClient.getFloodMap(currentMinute);
       setFloodGeoJson(mapData);
 
-      await fetchRoute(origin, destination, currentMinute, routingMode);
+      await fetchRoute(origin, destination, currentMinute, routingMode, activeCity);
 
       const hasCritical = result.timesteps.some((t) => t.critical_zones_count > 0);
       if (hasCritical) {
@@ -307,8 +356,22 @@ export const App: React.FC = () => {
       setOrigin(cfg.origin);
       setDestination(cfg.destination);
 
+      // Load city-specific drainage network
       const drainageData = await apiClient.getDrainageNetwork().catch(() => null);
       if (drainageData) setDrainageGeoJson(drainageData);
+
+      // Load city-specific historical events
+      const histEvents = await apiClient.getHistoricalScenarios(cityKey).catch(() => []);
+      if (histEvents && histEvents.length > 0) {
+        setHistoricalEvents(histEvents);
+        setSelectedHistoricalEvent(histEvents[0].id);
+      }
+
+      // If in historical mode, load historical observations
+      if (simulationMode === 'historical') {
+        const obsData = await apiClient.getHistoricalObservations(cityKey).catch(() => null);
+        setHistoricalObservations(obsData);
+      }
 
       await handleRunSimulation(currentScenario, engineMode);
     } catch (err) {
@@ -318,13 +381,66 @@ export const App: React.FC = () => {
     }
   };
 
-  // 5. Radar Feed Selection Handler
+  // 5. Simulation Mode Selector Handler (Live / Historical / Demo)
+  const handleSelectSimulationMode = async (mode: SimulationMode) => {
+    setSimulationMode(mode);
+    setIsLoadingSimulation(true);
+    try {
+      if (mode === 'historical') {
+        const histEvents = await apiClient.getHistoricalScenarios(activeCity).catch(() => []);
+        if (histEvents && histEvents.length > 0) {
+          setHistoricalEvents(histEvents);
+          const evId = histEvents[0].id;
+          setSelectedHistoricalEvent(evId);
+          const obsData = await apiClient.getHistoricalObservations(activeCity).catch(() => null);
+          setHistoricalObservations(obsData);
+
+          const result = await apiClient.runHistoricalSimulation(activeCity, evId, 180);
+          setSimulationData(result);
+          if (result.alerts) setOfficerAlerts(result.alerts);
+
+          const mapData = await apiClient.getFloodMap(currentMinute);
+          setFloodGeoJson(mapData);
+          await fetchRoute(origin, destination, currentMinute, routingMode, activeCity);
+        }
+      } else {
+        // Return to Live or Demo
+        setHistoricalObservations(null);
+        await handleRunSimulation(mode === 'demo' ? 'extreme' : currentScenario, engineMode);
+      }
+    } catch (err) {
+      console.error('Failed to switch simulation mode:', err);
+    } finally {
+      setIsLoadingSimulation(false);
+    }
+  };
+
+  // 6. Historical Event Selection Handler
+  const handleSelectHistoricalEvent = async (eventId: string) => {
+    setSelectedHistoricalEvent(eventId);
+    setIsLoadingSimulation(true);
+    try {
+      const result = await apiClient.runHistoricalSimulation(activeCity, eventId, 180);
+      setSimulationData(result);
+      if (result.alerts) setOfficerAlerts(result.alerts);
+
+      const mapData = await apiClient.getFloodMap(currentMinute);
+      setFloodGeoJson(mapData);
+      await fetchRoute(origin, destination, currentMinute, routingMode, activeCity);
+    } catch (err) {
+      console.error('Failed to run historical event:', err);
+    } finally {
+      setIsLoadingSimulation(false);
+    }
+  };
+
+  // 7. Radar Feed Selection Handler
   const handleSelectRadarFeed = async (source: string, apiKey?: string, event: string = 'mumbai_2005') => {
     try {
       setIsLoadingSimulation(true);
       const feedResult = await apiClient.getRadarFeed(source, apiKey, event);
       if (feedResult && feedResult.forecast && feedResult.forecast.length > 0) {
-        setCurrentScenario(source === 'openweathermap' ? 'owm_live' : 'mumbai_2005');
+        setCurrentScenario(source === 'openweathermap' ? 'owm_live' : event);
         await handleRunSimulation('custom', engineMode, feedResult.forecast);
       }
     } catch (err) {
@@ -334,7 +450,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // 6. Toggle Background Auto-Update
+  // 8. Toggle Background Auto-Update
   const handleToggleAutoUpdate = async () => {
     const nextState = !isAutoUpdating;
     try {
@@ -345,53 +461,35 @@ export const App: React.FC = () => {
     }
   };
 
-  // 7. Time slider change handler
+  // 9. Time slider change handler
   const handleMinuteChange = useCallback(
     async (minute: number) => {
       setCurrentMinute(minute);
       try {
         const mapData = await apiClient.getFloodMap(minute);
         setFloodGeoJson(mapData);
-        await fetchRoute(origin, destination, minute, routingMode);
+        await fetchRoute(origin, destination, minute, routingMode, activeCity);
       } catch (err) {
         console.error('Failed to update minute:', err);
       }
     },
-    [origin, destination, routingMode]
+    [origin, destination, routingMode, activeCity, fetchRoute]
   );
 
-  // 8. Fetch Route
-  const fetchRoute = async (
-    orig: [number, number],
-    dest: [number, number],
-    minute: number,
-    mode: string
-  ) => {
-    setIsLoadingRoute(true);
-    try {
-      const res = await apiClient.getRoute(orig, dest, minute, mode);
-      setRouteResult(res);
-    } catch (err) {
-      console.error('Routing calculation failed:', err);
-    } finally {
-      setIsLoadingRoute(false);
-    }
-  };
-
-  // 9. Map Click Handler
+  // 10. Map Click Handler
   const handleMapClick = (coords: [number, number]) => {
     if (clickTarget === 'origin') {
       setOrigin(coords);
       setClickTarget('destination');
-      fetchRoute(coords, destination, currentMinute, routingMode);
+      fetchRoute(coords, destination, currentMinute, routingMode, activeCity);
     } else {
       setDestination(coords);
       setClickTarget('origin');
-      fetchRoute(origin, coords, currentMinute, routingMode);
+      fetchRoute(origin, coords, currentMinute, routingMode, activeCity);
     }
   };
 
-  // 10. Validation modal trigger
+  // 11. Validation modal trigger
   const handleOpenValidation = async (mode: string = validationMode) => {
     setIsValidationOpen(true);
     setIsLoadingValidation(true);
@@ -410,11 +508,18 @@ export const App: React.FC = () => {
     handleOpenValidation(mode);
   };
 
-  // 11. ML Model Training Handler
+  // 12. ML Model Training Handler
   const handleTrainMLModel = async (epochs: number, numStorms: number) => {
     const res = await apiClient.trainMLModel(epochs, numStorms);
     setMlMetrics(res);
     return res;
+  };
+
+  // 13. Officer Alert Status Update Handler
+  const handleAlertStatusChange = (alertId: string, newStatus: 'active' | 'acknowledged' | 'resolved' | 'dismissed') => {
+    setOfficerAlerts((prev) =>
+      prev.map((a) => (a.alert_id === alertId ? { ...a, status: newStatus } : a))
+    );
   };
 
   const currentFloodedRoads: FloodedRoadSegment[] =
@@ -452,6 +557,13 @@ export const App: React.FC = () => {
         isWsConnected={isWsConnected}
         isAutoUpdating={isAutoUpdating}
         onToggleAutoUpdate={handleToggleAutoUpdate}
+        simulationMode={simulationMode}
+        onSelectSimulationMode={handleSelectSimulationMode}
+        historicalEvents={historicalEvents}
+        selectedHistoricalEvent={selectedHistoricalEvent}
+        onSelectHistoricalEvent={handleSelectHistoricalEvent}
+        activeAlertsCount={officerAlerts.filter((a) => a.status === 'active').length}
+        onOpenAlertsModal={() => setIsAlertsModalOpen(true)}
       />
 
       {/* Main Map & Interactive Workspace */}
@@ -465,6 +577,14 @@ export const App: React.FC = () => {
           origin={origin}
           destination={destination}
           onMapClick={handleMapClick}
+          onOriginChange={(coords) => {
+            setOrigin(coords);
+            fetchRoute(coords, destination, currentMinute, routingMode, activeCity);
+          }}
+          onDestinationChange={(coords) => {
+            setDestination(coords);
+            fetchRoute(origin, coords, currentMinute, routingMode, activeCity);
+          }}
           showFloodLayer={showFloodLayer}
           showDrainageLayer={showDrainageLayer}
           showRoadsLayer={showRoadsLayer}
@@ -476,11 +596,11 @@ export const App: React.FC = () => {
           radarReflectivityDbz={simulationData?.radar_reflectivity_dbz}
           stormTrack={simulationData?.storm_track}
           cityCenter={cityCenter}
+          historicalObservations={historicalObservations}
+          showHistoricalLayer={showHistoricalLayer}
         />
 
-        {/* ============================================================== */}
-        {/* Unified Left Intelligence Dock (Tabs: Nowcast, Drainage, Layers) */}
-        {/* ============================================================== */}
+        {/* Unified Left Intelligence Dock */}
         {isLeftDockOpen ? (
           <div className="absolute top-3 sm:top-3.5 left-3 sm:left-3.5 z-30 sm:z-20 w-[calc(100vw-1.5rem)] sm:w-80 max-w-sm max-h-[calc(100vh-10.5rem)] sm:max-h-[calc(100vh-5.5rem)] flex flex-col bg-slate-900/95 border border-slate-800/90 rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden pointer-events-auto transition-all duration-300">
             {/* Dock Header & Navigation Tabs */}
@@ -570,7 +690,6 @@ export const App: React.FC = () => {
             </div>
           </div>
         ) : (
-          /* Collapsed Pill Button */
           <button
             onClick={() => handleToggleLeftDock(true)}
             className="absolute top-3 sm:top-3.5 left-3 sm:left-3.5 z-20 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-200 text-xs font-bold rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-1.5 sm:gap-2 pointer-events-auto transition-all"
@@ -581,9 +700,7 @@ export const App: React.FC = () => {
           </button>
         )}
 
-        {/* ============================================================== */}
         {/* Right Collapsible Dock: Flood-Safe Emergency Routing */}
-        {/* ============================================================== */}
         {isRightDockOpen ? (
           <div className="absolute top-3 sm:top-3.5 right-3 sm:right-3.5 z-30 sm:z-20 w-[calc(100vw-1.5rem)] sm:w-80 max-w-sm max-h-[calc(100vh-10.5rem)] sm:max-h-[calc(100vh-5.5rem)] flex flex-col bg-slate-900/95 border border-slate-800/90 rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden pointer-events-auto transition-all duration-300">
             {/* Dock Header */}
@@ -610,27 +727,27 @@ export const App: React.FC = () => {
                 destination={destination}
                 onOriginChange={(coords) => {
                   setOrigin(coords);
-                  fetchRoute(coords, destination, currentMinute, routingMode);
+                  fetchRoute(coords, destination, currentMinute, routingMode, activeCity);
                 }}
                 onDestinationChange={(coords) => {
                   setDestination(coords);
-                  fetchRoute(origin, coords, currentMinute, routingMode);
+                  fetchRoute(origin, coords, currentMinute, routingMode, activeCity);
                 }}
                 routeResult={routeResult}
                 isLoading={isLoadingRoute}
                 onRecalculateRoute={() =>
-                  fetchRoute(origin, destination, currentMinute, routingMode)
+                  fetchRoute(origin, destination, currentMinute, routingMode, activeCity)
                 }
                 mode={routingMode}
                 onModeChange={(m) => {
                   setRoutingMode(m);
-                  fetchRoute(origin, destination, currentMinute, m);
+                  fetchRoute(origin, destination, currentMinute, m, activeCity);
                 }}
+                activeCity={activeCity}
               />
             </div>
           </div>
         ) : (
-          /* Collapsed Pill Button */
           <button
             onClick={() => handleToggleRightDock(true)}
             className="absolute top-3 sm:top-3.5 right-3 sm:right-3.5 z-20 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-200 text-xs font-bold rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-1.5 sm:gap-2 pointer-events-auto transition-all"
@@ -642,9 +759,7 @@ export const App: React.FC = () => {
           </button>
         )}
 
-        {/* ============================================================== */}
         {/* Floating Bottom Center: Forecast Timeline Slider */}
-        {/* ============================================================== */}
         <div className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 z-20 w-full max-w-xl px-2 sm:px-4 pointer-events-auto">
           <TimeSlider
             currentMinute={currentMinute}
@@ -664,12 +779,22 @@ export const App: React.FC = () => {
         onSelectMode={handleSelectValidationMode}
       />
 
-      {/* AI / Machine Learning Surrogate Model Studio Modal */}
+      {/* AI Surrogate Studio Modal */}
       <ModelTrainingModal
         isOpen={isTrainModalOpen}
         onClose={() => setIsTrainModalOpen(false)}
         onTrain={handleTrainMLModel}
         currentMetrics={mlMetrics}
+      />
+
+      {/* Municipal Officer Alert Dashboard Modal */}
+      <OfficerAlertModal
+        isOpen={isAlertsModalOpen}
+        onClose={() => setIsAlertsModalOpen(false)}
+        alerts={officerAlerts}
+        onAlertStatusChange={handleAlertStatusChange}
+        simulationMode={simulationMode}
+        activeCity={activeCity}
       />
     </div>
   );

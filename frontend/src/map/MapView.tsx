@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import { RouteResponse, FloodedRoadSegment, DrainNodeStatus, BasemapType, LocationSearchResult } from '../types';
 import { apiClient } from '../api/client';
-import { Search, Map, Globe, Mountain, Navigation, Compass, Layers, X } from 'lucide-react';
+import { Search, Map, Globe, Mountain, Navigation, Compass, Layers, X, Info } from 'lucide-react';
 
 interface MapViewProps {
   floodGeoJson: any;
@@ -13,6 +13,8 @@ interface MapViewProps {
   origin: [number, number];
   destination: [number, number];
   onMapClick: (coords: [number, number]) => void;
+  onOriginChange?: (coords: [number, number]) => void;
+  onDestinationChange?: (coords: [number, number]) => void;
   showFloodLayer: boolean;
   showDrainageLayer: boolean;
   showRoadsLayer: boolean;
@@ -24,6 +26,8 @@ interface MapViewProps {
   radarReflectivityDbz?: number;
   stormTrack?: { minute: number; center_lat: number; center_lon: number; intensity_mm_hr: number }[];
   cityCenter?: [number, number];
+  historicalObservations?: any;
+  showHistoricalLayer?: boolean;
 }
 
 export const MapView: React.FC<MapViewProps> = ({
@@ -35,6 +39,8 @@ export const MapView: React.FC<MapViewProps> = ({
   origin,
   destination,
   onMapClick,
+  onOriginChange,
+  onDestinationChange,
   showFloodLayer,
   showDrainageLayer,
   showRoadsLayer,
@@ -46,6 +52,8 @@ export const MapView: React.FC<MapViewProps> = ({
   radarReflectivityDbz = 52.0,
   stormTrack = [],
   cityCenter,
+  historicalObservations,
+  showHistoricalLayer = true,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -58,6 +66,7 @@ export const MapView: React.FC<MapViewProps> = ({
   const routesLayerRef = useRef<L.LayerGroup | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const stormTrackLayerRef = useRef<L.LayerGroup | null>(null);
+  const historicalLayerRef = useRef<L.LayerGroup | null>(null);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -66,7 +75,7 @@ export const MapView: React.FC<MapViewProps> = ({
   const [showSearchResults, setShowSearchResults] = useState<boolean>(false);
   const [showBasemapMenu, setShowBasemapMenu] = useState<boolean>(false);
 
-  // Reliable Basemap Tile Providers (Zero watermark on Dark Canvas!)
+  // Reliable Basemap Tile Providers
   const BASEMAP_TILES: Record<BasemapType, { url: string; attribution: string; maxZoom: number }> = {
     dark: {
       url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
@@ -117,7 +126,6 @@ export const MapView: React.FC<MapViewProps> = ({
       zoomControl: false,
     });
 
-    // Initial Tile Layer
     const currentTileConfig = BASEMAP_TILES[basemap] || BASEMAP_TILES.dark;
     tileLayerRef.current = L.tileLayer(currentTileConfig.url, {
       attribution: currentTileConfig.attribution,
@@ -132,6 +140,7 @@ export const MapView: React.FC<MapViewProps> = ({
     stormTrackLayerRef.current = L.layerGroup().addTo(map);
     routesLayerRef.current = L.layerGroup().addTo(map);
     markersLayerRef.current = L.layerGroup().addTo(map);
+    historicalLayerRef.current = L.layerGroup().addTo(map);
 
     map.on('click', (e: L.LeafletMouseEvent) => {
       onMapClick([Number(e.latlng.lng.toFixed(4)), Number(e.latlng.lat.toFixed(4))]);
@@ -145,235 +154,183 @@ export const MapView: React.FC<MapViewProps> = ({
     };
   }, []);
 
-  // Update map view when active city changes
+  // 2. Pan when City Center changes
   useEffect(() => {
-    if (!mapInstanceRef.current || !cityCenter) return;
-    mapInstanceRef.current.flyTo([cityCenter[1], cityCenter[0]], 13, { duration: 1.5 });
+    if (mapInstanceRef.current && cityCenter) {
+      mapInstanceRef.current.flyTo([cityCenter[1], cityCenter[0]], 13, { duration: 1.2 });
+    }
   }, [cityCenter]);
 
-  // 2. Basemap Switcher API Update
+  // 3. Basemap switcher
   useEffect(() => {
     if (!mapInstanceRef.current || !tileLayerRef.current) return;
+    const tileConfig = BASEMAP_TILES[basemap] || BASEMAP_TILES.dark;
     mapInstanceRef.current.removeLayer(tileLayerRef.current);
-
-    const cfg = BASEMAP_TILES[basemap] || BASEMAP_TILES.dark;
-    tileLayerRef.current = L.tileLayer(cfg.url, {
-      attribution: cfg.attribution,
-      maxZoom: cfg.maxZoom,
+    tileLayerRef.current = L.tileLayer(tileConfig.url, {
+      attribution: tileConfig.attribution,
+      maxZoom: tileConfig.maxZoom,
     }).addTo(mapInstanceRef.current);
     tileLayerRef.current.bringToBack();
   }, [basemap]);
 
-  // 3. Search Handler with 300ms Debounce API Integration (Fix 5)
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      setIsSearching(true);
-      try {
-        const results = await apiClient.searchLocations(searchQuery);
-        setSearchResults(results);
-        setShowSearchResults(true);
-      } catch (err) {
-        console.error('Search error:', err);
-      } finally {
-        setIsSearching(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  const handleSelectSearchResult = (loc: LocationSearchResult) => {
-    if (!mapInstanceRef.current) return;
-    mapInstanceRef.current.flyTo([loc.lat, loc.lon], 15, { duration: 1.2 });
-    setShowSearchResults(false);
-    setSearchQuery(loc.name);
-  };
-
-  // 4. Render Flood Polygons
+  // 4. Flood Grid Polygons
   useEffect(() => {
     if (!floodLayerRef.current) return;
     floodLayerRef.current.clearLayers();
+    if (!showFloodLayer || !floodGeoJson) return;
 
-    if (!showFloodLayer || !floodGeoJson || !floodGeoJson.features) return;
-
-    const floodGeoLayer = L.geoJSON(floodGeoJson, {
-      filter: (feature) => feature.properties.type === 'grid_cell',
+    L.geoJSON(floodGeoJson, {
+      filter: (feature) => feature.geometry.type === 'Polygon',
       style: (feature) => {
-        const depth = feature?.properties.water_depth_cm || 0;
+        const depth = feature?.properties?.water_depth_cm || 0;
         return {
           fillColor: getFloodColor(depth),
           fillOpacity: getFloodOpacity(depth),
           color: getFloodColor(depth),
-          weight: 0.6,
-          opacity: 0.5,
+          weight: 0.8,
+          opacity: 0.6,
         };
       },
       onEachFeature: (feature, layer) => {
         const p = feature.properties;
-        layer.bindPopup(`
-          <div style="font-family: inherit; font-size: 12px; line-height: 1.5;">
-            <div style="font-weight: 800; color: #38bdf8; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-              <span>DEM CELL [${p.row}, ${p.col}]</span>
-              <span style="font-size: 10px; background: #0c4a6e; padding: 2px 6px; border-radius: 4px;">NOWCAST</span>
-            </div>
-            <div>Water Depth: <strong style="color: ${getFloodColor(p.water_depth_cm)}; font-size: 14px;">${p.water_depth_cm} cm</strong></div>
-            <div>Risk Category: <strong>${p.risk_level}</strong></div>
-            <div>Elevation: <strong>${p.elevation_m} m AMSL</strong></div>
+        layer.bindTooltip(`
+          <div style="font-family: monospace; font-size: 11px;">
+            <strong>Water Depth:</strong> ${p.water_depth_cm} cm<br/>
+            <strong>Risk Level:</strong> ${p.risk_level}<br/>
+            <strong>Elevation:</strong> ${p.elevation_m} m
           </div>
-        `);
+        `, { sticky: true });
       },
-    });
-
-    floodLayerRef.current.addLayer(floodGeoLayer);
+    }).addTo(floodLayerRef.current);
   }, [floodGeoJson, showFloodLayer]);
 
-  // 5. Render Storm Cell Movement Track (Fix 7)
-  useEffect(() => {
-    if (!stormTrackLayerRef.current) return;
-    stormTrackLayerRef.current.clearLayers();
-
-    if (!stormTrack || stormTrack.length < 2) return;
-
-    const latLngs: [number, number][] = stormTrack.map((pt) => [pt.center_lat, pt.center_lon]);
-
-    const trackLine = L.polyline(latLngs, {
-      color: '#06b6d4',
-      weight: 3,
-      opacity: 0.85,
-      dashArray: '6, 8',
-      lineCap: 'round',
-    });
-    trackLine.bindPopup('<strong>Convective Storm Cell Trajectory</strong><br/>Predicted trajectory across 0–3h nowcast window.');
-    stormTrackLayerRef.current.addLayer(trackLine);
-
-    stormTrack.forEach((pt) => {
-      const isCurrent = Math.abs(pt.minute - currentMinute) <= 15;
-      const markerHtml = `
-        <div style="
-          width: ${isCurrent ? '26px' : '16px'};
-          height: ${isCurrent ? '26px' : '16px'};
-          border-radius: 50%;
-          background: ${isCurrent ? 'rgba(6, 182, 212, 0.4)' : 'rgba(14, 165, 233, 0.25)'};
-          border: 2px solid #06b6d4;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 0 12px ${isCurrent ? '#06b6d4' : 'transparent'};
-          transform: translate(-50%, -50%);
-        ">
-          <div style="width: 6px; height: 6px; border-radius: 50%; background: #ffffff;"></div>
-        </div>
-      `;
-
-      const stormIcon = L.divIcon({
-        html: markerHtml,
-        className: 'storm-track-icon',
-        iconSize: [0, 0],
-      });
-
-      const m = L.marker([pt.center_lat, pt.center_lon], { icon: stormIcon });
-      m.bindPopup(`
-        <div style="font-size: 11px; font-family: inherit;">
-          <strong style="color: #06b6d4;">Storm Core at T+${pt.minute}m</strong><br/>
-          Intensity: <strong>${pt.intensity_mm_hr} mm/hr</strong><br/>
-          Location: ${pt.center_lat.toFixed(3)}°N, ${pt.center_lon.toFixed(3)}°E
-        </div>
-      `);
-      stormTrackLayerRef.current?.addLayer(m);
-    });
-  }, [stormTrack, currentMinute]);
-
-  // 6. Render Drainage Network & Overflows
-  useEffect(() => {
-    if (!drainageLayerRef.current) return;
-    drainageLayerRef.current.clearLayers();
-
-    if (!showDrainageLayer || !drainageGeoJson) return;
-
-    const drainGeo = L.geoJSON(drainageGeoJson, {
-      filter: (f) => f.geometry.type === 'LineString',
-      style: {
-        color: '#38bdf8',
-        weight: 2.2,
-        opacity: 0.8,
-        dashArray: '3, 4',
-      },
-    });
-    drainageLayerRef.current.addLayer(drainGeo);
-
-    // Overflowing Manholes
-    overflowNodes.forEach((node) => {
-      const pulseIcon = L.divIcon({
-        html: `
-          <div class="relative flex items-center justify-center">
-            <div style="width: 24px; height: 24px; border-radius: 50%; background: #ef4444; opacity: 0.4; animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-            <div style="position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #dc2626; border: 2px solid #ffffff; box-shadow: 0 0 10px #ef4444;"></div>
-          </div>
-        `,
-        className: 'overflow-node-marker',
-        iconSize: [24, 24],
-        iconAnchor: [12, 12],
-      });
-
-      const m = L.marker([node.lat, node.lon], { icon: pulseIcon });
-      m.bindPopup(`
-        <div style="font-size: 12px; font-family: inherit;">
-          <strong style="color: #ef4444;">OVERFLOWING INLET / MANHOLE</strong><br/>
-          <strong>${node.name}</strong> (${node.type})<br/>
-          Location: ${node.street_location}<br/>
-          Overflow Rate: <strong style="color: #f87171;">${node.overflow_rate_m3_s} m³/s</strong><br/>
-          Storage Capacity: ${node.storage_capacity_m3} m³ (SURCHARGED)
-        </div>
-      `);
-      drainageLayerRef.current?.addLayer(m);
-    });
-  }, [drainageGeoJson, overflowNodes, showDrainageLayer]);
-
-  // 7. Render Road Network
+  // 5. Road Network Overlay
   useEffect(() => {
     if (!roadsLayerRef.current) return;
     roadsLayerRef.current.clearLayers();
-
     if (!showRoadsLayer || !floodedRoads) return;
 
-    floodedRoads.forEach((r) => {
-      if (r.coordinates && r.coordinates.length >= 2) {
-        const latLngs = r.coordinates.map((c) => [c[1], c[0]] as [number, number]);
-        const color = getFloodColor(r.water_depth_cm);
+    floodedRoads.forEach((road) => {
+      const latlngs = road.coordinates.map((c) => [c[1], c[0]] as [number, number]);
+      const isFlooded = road.water_depth_cm >= 5.0;
+      const isBlocked = road.is_blocked;
 
-        const line = L.polyline(latLngs, {
-          color: r.is_blocked ? '#ef4444' : color,
-          weight: r.water_depth_cm > 15.0 ? 5 : 3,
-          opacity: 0.9,
-          dashArray: r.is_blocked ? '6, 6' : undefined,
-        });
+      const poly = L.polyline(latlngs, {
+        color: isBlocked ? '#ef4444' : isFlooded ? '#f59e0b' : '#334155',
+        weight: isBlocked ? 4.5 : isFlooded ? 3.5 : 1.5,
+        opacity: isBlocked ? 0.95 : isFlooded ? 0.85 : 0.4,
+        dashArray: isBlocked ? '6, 6' : undefined,
+      });
 
-        line.bindPopup(`
-          <div style="font-size: 12px; font-family: inherit;">
-            <strong>${r.name}</strong><br/>
-            Water Depth: <strong style="color: ${color}">${r.water_depth_cm} cm</strong><br/>
-            Risk Status: <strong>${r.risk_level}</strong><br/>
-            ${r.is_blocked ? '<span style="color: #ef4444; font-weight: bold;">⛔ ROADWAY IMPASSABLE (&gt;40cm)</span>' : '<span style="color: #10b981;">PASSABLE</span>'}
-          </div>
-        `);
+      poly.bindTooltip(`
+        <div style="font-family: sans-serif; font-size: 11px;">
+          <strong>${road.name}</strong><br/>
+          Depth: <strong>${road.water_depth_cm} cm</strong><br/>
+          Status: <span style="color: ${isBlocked ? '#ef4444' : '#10b981'}; font-weight: bold;">
+            ${isBlocked ? 'IMPASSABLE / BLOCKED' : road.risk_level}
+          </span>
+        </div>
+      `, { sticky: true });
 
-        roadsLayerRef.current?.addLayer(line);
-      }
+      roadsLayerRef.current?.addLayer(poly);
     });
   }, [floodedRoads, showRoadsLayer]);
 
-  // 8. Render Routing Comparison
+  // 6. Drainage Network (Verified vs Inferred + Surcharge)
+  useEffect(() => {
+    if (!drainageLayerRef.current) return;
+    drainageLayerRef.current.clearLayers();
+    if (!showDrainageLayer) return;
+
+    if (drainageGeoJson) {
+      L.geoJSON(drainageGeoJson, {
+        filter: (feature) => feature.geometry.type === 'LineString',
+        style: (feature) => {
+          const isVerified = feature?.properties?.verification_status === 'verified';
+          return {
+            color: '#06b6d4',
+            weight: 2.2,
+            opacity: isVerified ? 0.8 : 0.45,
+            dashArray: isVerified ? undefined : '4, 4',
+          };
+        },
+        onEachFeature: (feature, layer) => {
+          const p = feature.properties;
+          layer.bindTooltip(`
+            <div style="font-size: 11px;">
+              <strong>Drain Channel:</strong> ${p.name || 'Storm Trunk'}<br/>
+              Type: ${p.verification_status || 'verified'}<br/>
+              Slope: ${p.slope_percent || 0.2}%
+            </div>
+          `, { sticky: true });
+        },
+      }).addTo(drainageLayerRef.current);
+    }
+
+    if (overflowNodes) {
+      overflowNodes.forEach((node) => {
+        const isSurcharging = node.is_overflowing;
+        const marker = L.circleMarker([node.lat, node.lon], {
+          radius: isSurcharging ? 6 : 4,
+          fillColor: isSurcharging ? '#dc2626' : '#0284c7',
+          fillOpacity: 0.9,
+          color: '#ffffff',
+          weight: 1.5,
+        });
+
+        marker.bindTooltip(`
+          <div style="font-size: 11px;">
+            <strong>${node.name}</strong> (${node.type})<br/>
+            Location: ${node.street_location}<br/>
+            Status: <span style="color: ${isSurcharging ? '#ef4444' : '#38bdf8'}; font-weight: bold;">
+              ${isSurcharging ? `OVERFLOWING (${node.overflow_rate_m3_s} m³/s)` : 'Normal'}
+            </span><br/>
+            Classification: ${node.verification_status || 'verified'}
+          </div>
+        `, { sticky: true });
+
+        drainageLayerRef.current?.addLayer(marker);
+      });
+    }
+  }, [drainageGeoJson, overflowNodes, showDrainageLayer]);
+
+  // 7. Historical Observation Ground-Truth Layer
+  useEffect(() => {
+    if (!historicalLayerRef.current) return;
+    historicalLayerRef.current.clearLayers();
+    if (!showHistoricalLayer || !historicalObservations?.features) return;
+
+    historicalObservations.features.forEach((feat: any) => {
+      const coords = feat.geometry.coordinates;
+      const p = feat.properties;
+      const marker = L.circleMarker([coords[1], coords[0]], {
+        radius: 7,
+        fillColor: '#f59e0b',
+        fillOpacity: 0.85,
+        color: '#ffffff',
+        weight: 2,
+      });
+
+      marker.bindPopup(`
+        <div style="font-size: 12px; font-family: sans-serif;">
+          <strong style="color: #f59e0b;">Verified Historical Flood Point</strong><br/>
+          <strong>Location:</strong> ${p.name}<br/>
+          <strong>Observed Depth:</strong> <span style="font-weight: bold; color: #ef4444;">${p.observed_depth_cm} cm</span><br/>
+          <strong>Source:</strong> ${p.source}
+        </div>
+      `);
+
+      historicalLayerRef.current?.addLayer(marker);
+    });
+  }, [historicalObservations, showHistoricalLayer]);
+
+  // 8. 3-Route Generation Overlay (Fastest, Flood-Safe, Alternative)
   useEffect(() => {
     if (!routesLayerRef.current) return;
     routesLayerRef.current.clearLayers();
-
     if (!showRoutesLayer || !routeResult) return;
 
+    // Normal / Fastest Route (Red if flooded, Gray if clear)
     if (routeResult.normal_route && routeResult.normal_route.coordinates.length > 0) {
       const normCoords = routeResult.normal_route.coordinates.map((c) => [c[1], c[0]] as [number, number]);
       const normLine = L.polyline(normCoords, {
@@ -384,15 +341,16 @@ export const MapView: React.FC<MapViewProps> = ({
       });
       normLine.bindPopup(`
         <div style="font-size: 12px;">
-          <strong>Direct / Normal Route</strong><br/>
+          <strong>Direct / Fastest Route</strong><br/>
           Flooded Segments: <strong>${routeResult.normal_route.flooded_segments_count}</strong><br/>
           Max Water Depth: <strong>${routeResult.normal_route.max_water_depth_cm} cm</strong><br/>
-          Distance: ${routeResult.normal_route.distance_km} km
+          Distance: ${routeResult.normal_route.distance_km} km (${routeResult.normal_route.estimated_time_minutes} min)
         </div>
       `);
       routesLayerRef.current.addLayer(normLine);
     }
 
+    // Flood-Safe Route (Emerald Solid)
     if (routeResult.safe_route && routeResult.safe_route.coordinates.length > 0) {
       const safeCoords = routeResult.safe_route.coordinates.map((c) => [c[1], c[0]] as [number, number]);
       const safeLine = L.polyline(safeCoords, {
@@ -402,24 +360,44 @@ export const MapView: React.FC<MapViewProps> = ({
       });
       safeLine.bindPopup(`
         <div style="font-size: 12px;">
-          <strong style="color: #10b981;">Flood-Safe Elevation Route</strong><br/>
+          <strong style="color: #10b981;">Flood-Safe Route (Elevated Corridor)</strong><br/>
           Flooded Segments: <strong>${routeResult.safe_route.flooded_segments_count}</strong><br/>
           Max Water Depth: <strong>${routeResult.safe_route.max_water_depth_cm} cm</strong><br/>
-          Est. Travel Time: <strong>${routeResult.safe_route.estimated_time_minutes} min</strong>
+          Travel Time: <strong>${routeResult.safe_route.estimated_time_minutes} min</strong> (${routeResult.safe_route.distance_km} km)
         </div>
       `);
       routesLayerRef.current.addLayer(safeLine);
     }
+
+    // Alternative Route (Indigo Dashed)
+    if (routeResult.alternative_route && routeResult.alternative_route.coordinates.length > 0) {
+      const altCoords = routeResult.alternative_route.coordinates.map((c) => [c[1], c[0]] as [number, number]);
+      const altLine = L.polyline(altCoords, {
+        color: '#6366f1',
+        weight: 4,
+        opacity: 0.85,
+        dashArray: '8, 6',
+      });
+      altLine.bindPopup(`
+        <div style="font-size: 12px;">
+          <strong style="color: #6366f1;">Alternative Route (Balanced Trade-Off)</strong><br/>
+          Flooded Segments: <strong>${routeResult.alternative_route.flooded_segments_count}</strong><br/>
+          Max Water Depth: <strong>${routeResult.alternative_route.max_water_depth_cm} cm</strong><br/>
+          Travel Time: <strong>${routeResult.alternative_route.estimated_time_minutes} min</strong>
+        </div>
+      `);
+      routesLayerRef.current.addLayer(altLine);
+    }
   }, [routeResult, showRoutesLayer]);
 
-  // 9. Origin & Destination Markers
+  // 9. Draggable Origin & Destination Markers
   useEffect(() => {
     if (!markersLayerRef.current) return;
     markersLayerRef.current.clearLayers();
 
     const originIcon = L.divIcon({
       html: `
-        <div style="width: 28px; height: 28px; border-radius: 50%; background: #3b82f6; border: 2.5px solid #ffffff; box-shadow: 0 4px 14px rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; font-weight: 900; color: #ffffff; font-size: 13px;">
+        <div style="width: 28px; height: 28px; border-radius: 50%; background: #3b82f6; border: 2.5px solid #ffffff; box-shadow: 0 4px 14px rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; font-weight: 900; color: #ffffff; font-size: 13px; cursor: grab;">
           A
         </div>
       `,
@@ -428,13 +406,22 @@ export const MapView: React.FC<MapViewProps> = ({
       iconAnchor: [14, 14],
     });
 
-    const origMarker = L.marker([origin[1], origin[0]], { icon: originIcon });
-    origMarker.bindPopup('<strong>ORIGIN (Point A)</strong>');
+    const origMarker = L.marker([origin[1], origin[0]], { 
+      icon: originIcon,
+      draggable: true,
+      title: "Drag to change Origin (Point A)"
+    });
+    origMarker.bindPopup('<strong>ORIGIN (Point A)</strong><br/><span style="font-size: 10px; color: #64748b;">Drag me to recalculate route!</span>');
+    origMarker.on('dragend', (e: any) => {
+      const ll = e.target.getLatLng();
+      const newCoords: [number, number] = [Number(ll.lng.toFixed(4)), Number(ll.lat.toFixed(4))];
+      onOriginChange?.(newCoords);
+    });
     markersLayerRef.current.addLayer(origMarker);
 
     const destIcon = L.divIcon({
       html: `
-        <div style="width: 28px; height: 28px; border-radius: 50%; background: #ef4444; border: 2.5px solid #ffffff; box-shadow: 0 4px 14px rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; font-weight: 900; color: #ffffff; font-size: 13px;">
+        <div style="width: 28px; height: 28px; border-radius: 50%; background: #ef4444; border: 2.5px solid #ffffff; box-shadow: 0 4px 14px rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; font-weight: 900; color: #ffffff; font-size: 13px; cursor: grab;">
           B
         </div>
       `,
@@ -443,16 +430,25 @@ export const MapView: React.FC<MapViewProps> = ({
       iconAnchor: [14, 14],
     });
 
-    const destMarker = L.marker([destination[1], destination[0]], { icon: destIcon });
-    destMarker.bindPopup('<strong>DESTINATION (Point B)</strong>');
+    const destMarker = L.marker([destination[1], destination[0]], { 
+      icon: destIcon,
+      draggable: true,
+      title: "Drag to change Destination (Point B)"
+    });
+    destMarker.bindPopup('<strong>DESTINATION (Point B)</strong><br/><span style="font-size: 10px; color: #64748b;">Drag me to recalculate route!</span>');
+    destMarker.on('dragend', (e: any) => {
+      const ll = e.target.getLatLng();
+      const newCoords: [number, number] = [Number(ll.lng.toFixed(4)), Number(ll.lat.toFixed(4))];
+      onDestinationChange?.(newCoords);
+    });
     markersLayerRef.current.addLayer(destMarker);
-  }, [origin, destination]);
+  }, [origin, destination, onOriginChange, onDestinationChange]);
 
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-      {/* Top Floating Map Controls: Centered horizontally with zero sidebar collisions */}
+      {/* Top Floating Map Controls */}
       <div className="absolute top-3 sm:top-3.5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 sm:gap-2 pointer-events-auto">
         {/* Search Bar with Autocomplete */}
         <div className="relative">
@@ -460,7 +456,7 @@ export const MapView: React.FC<MapViewProps> = ({
             <Search className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-slate-400 mr-1.5 sm:mr-2 shrink-0" />
             <input
               type="text"
-              placeholder="Search..."
+              placeholder="Search locality..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => setShowSearchResults(true)}
@@ -468,105 +464,27 @@ export const MapView: React.FC<MapViewProps> = ({
             />
             {searchQuery && (
               <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setSearchResults([]);
-                }}
-                className="text-slate-500 hover:text-white p-0.5"
+                onClick={() => setSearchQuery('')}
+                className="text-slate-400 hover:text-white ml-1"
               >
                 <X className="w-3 h-3" />
               </button>
             )}
-            {isSearching && (
-              <div className="w-3.5 h-3.5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin shrink-0 ml-1.5" />
-            )}
           </div>
-
-          {/* Autocomplete Dropdown */}
-          {showSearchResults && searchQuery.trim().length >= 2 && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-30 max-h-56 overflow-y-auto">
-              {searchResults.length > 0 ? (
-                searchResults.map((loc) => (
-                  <button
-                    key={loc.id}
-                    onClick={() => handleSelectSearchResult(loc)}
-                    className="w-full text-left px-3 py-2 text-xs hover:bg-slate-800 flex items-center justify-between border-b border-slate-800 last:border-b-0 transition-colors"
-                  >
-                    <div>
-                      <div className="font-semibold text-slate-200">{loc.name}</div>
-                      <div className="text-[10px] text-slate-400 capitalize">{loc.category} • {loc.elevation_m}m elev</div>
-                    </div>
-                    <Navigation className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                  </button>
-                ))
-              ) : (
-                !isSearching && (
-                  <div className="px-4 py-3 text-xs text-slate-400 text-center italic">
-                    No matching locations found for "{searchQuery}"
-                  </div>
-                )
-              )}
-            </div>
-          )}
         </div>
 
-        {/* Basemap Switcher — Desktop/Tablet (sm+) */}
-        <div className="hidden sm:flex bg-slate-900/95 border border-slate-700/80 p-1 rounded-xl shadow-2xl backdrop-blur-md items-center gap-1">
-          <button
-            onClick={() => onBasemapChange('dark')}
-            className={`px-2.5 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all ${
-              basemap === 'dark' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
-            }`}
-            title="Esri Dark Gray Canvas (Watermark-Free)"
-          >
-            <Map className="w-3 h-3" />
-            <span>Dark</span>
-          </button>
-          <button
-            onClick={() => onBasemapChange('satellite')}
-            className={`px-2.5 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all ${
-              basemap === 'satellite' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
-            }`}
-            title="Esri World Imagery"
-          >
-            <Globe className="w-3 h-3" />
-            <span>Satellite</span>
-          </button>
-          <button
-            onClick={() => onBasemapChange('streets')}
-            className={`px-2.5 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all ${
-              basemap === 'streets' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
-            }`}
-            title="OpenStreetMap Streets"
-          >
-            <Layers className="w-3 h-3" />
-            <span>Streets</span>
-          </button>
-          <button
-            onClick={() => onBasemapChange('topo')}
-            className={`px-2.5 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all ${
-              basemap === 'topo' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
-            }`}
-            title="OpenTopoMap Topography"
-          >
-            <Mountain className="w-3 h-3" />
-            <span>Topo</span>
-          </button>
-        </div>
-
-        {/* Basemap Switcher — Mobile (< sm) */}
-        <div className="sm:hidden relative">
+        {/* Basemap Switcher Menu */}
+        <div className="relative">
           <button
             onClick={() => setShowBasemapMenu(!showBasemapMenu)}
-            className="bg-slate-900/95 border border-slate-700/80 px-2.5 py-1.5 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-1.5 text-xs text-slate-200"
-            title="Switch Basemap Tile Layer"
+            className="p-1.5 sm:p-2 bg-slate-900/95 border border-slate-700/80 rounded-xl shadow-2xl text-slate-300 hover:text-white transition-colors"
+            title="Switch Basemap Style"
           >
-            <Layers className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="capitalize text-[11px] font-semibold">{basemap}</span>
+            <Layers className="w-4 h-4 text-cyan-400" />
           </button>
 
           {showBasemapMenu && (
-            <div className="absolute right-0 top-full mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1 z-30 min-w-[120px] flex flex-col gap-0.5 animate-in fade-in">
+            <div className="absolute right-0 top-full mt-2 w-36 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1 z-30 animate-in fade-in">
               {(['dark', 'satellite', 'streets', 'topo'] as BasemapType[]).map((bm) => (
                 <button
                   key={bm}
@@ -574,8 +492,10 @@ export const MapView: React.FC<MapViewProps> = ({
                     onBasemapChange(bm);
                     setShowBasemapMenu(false);
                   }}
-                  className={`text-left px-2.5 py-1.5 rounded-lg text-xs capitalize transition-colors ${
-                    basemap === bm ? 'bg-blue-600 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'
+                  className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs capitalize transition-colors ${
+                    basemap === bm
+                      ? 'bg-blue-600 text-white font-bold'
+                      : 'text-slate-300 hover:bg-slate-800'
                   }`}
                 >
                   {bm}
