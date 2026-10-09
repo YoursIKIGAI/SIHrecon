@@ -1,6 +1,7 @@
 import pytest
 import numpy as np
-from backend.data.city_generator import CityData
+from backend.data.city_generator import CityData, get_city_data
+from backend.data.city_configs import set_active_city_key
 from backend.simulation.rainfall import RainfallModule
 from backend.simulation.runoff import RunoffModel
 from backend.simulation.surface_flow import SurfaceFlowModel
@@ -97,7 +98,8 @@ def test_ml_surrogate_model_training_and_inference():
     assert np.max(pred_grid) > 0.0
 
 def test_flood_safe_routing():
-    city = CityData()
+    set_active_city_key("mumbai")
+    city = get_city_data(city_key="mumbai")
     engine = FloodEngine(city)
     res = engine.run_simulation(scenario="extreme", duration_minutes=180)
     
