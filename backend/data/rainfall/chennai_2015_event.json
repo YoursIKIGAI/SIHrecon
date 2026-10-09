@@ -1,0 +1,21 @@
+{
+  "event": "Chennai 1 December 2015 Historic Deluge",
+  "event_date": "2015-12-01",
+  "city": "chennai",
+  "total_rainfall_mm": 494.0,
+  "sources": [
+    "India Meteorological Department (IMD) Meenambakkam & Nungambakkam Observatories",
+    "Public Works Department (PWD) Water Resources Organization Chembarambakkam Gauge",
+    "Tamil Nadu State Disaster Management Authority (TNSDMA) Report 2015"
+  ],
+  "description": "Record-breaking 24-hour deluge (494 mm recorded at Tambaram/Meenambakkam, exceeding all 100-year monthly averages) compounded by simultaneous 29,000 cusecs emergency release from Chembarambakkam Reservoir into the Adyar River basin. Submerged Saidapet Bridge, Velachery, Chennai Airport runway/GST Road, and Kotturpuram under 1.5-3.0 meters of water.",
+  "forecast": [
+    { "minutes": 0, "rainfall_mm_hr": 35.0 },
+    { "minutes": 30, "rainfall_mm_hr": 78.0 },
+    { "minutes": 60, "rainfall_mm_hr": 155.0 },
+    { "minutes": 90, "rainfall_mm_hr": 195.0 },
+    { "minutes": 120, "rainfall_mm_hr": 160.0 },
+    { "minutes": 150, "rainfall_mm_hr": 110.0 },
+    { "minutes": 180, "rainfall_mm_hr": 65.0 }
+  ]
+}

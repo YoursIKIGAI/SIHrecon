@@ -1,0 +1,22 @@
+{
+  "event": "Delhi July 2023 Yamuna Extreme Inundation",
+  "event_date": "2023-07-09",
+  "city": "delhi",
+  "total_rainfall_mm": 153.0,
+  "peak_river_level_m": 208.66,
+  "sources": [
+    "India Meteorological Department (IMD) Safdarjung & Lodhi Road Observatories",
+    "Central Water Commission (CWC) Old Railway Bridge Gauge Station",
+    "Delhi Disaster Management Authority (DDMA) Flood Incident Reports July 2023"
+  ],
+  "description": "Historic monsoon downpour (153 mm in 24h, highest July rainfall since 1982) coupled with extreme Hathnikund Barrage discharge (3.59 lakh cusecs), causing Yamuna water level to breach the all-time 45-year record (208.66 m vs 1978 record of 207.49 m). Submerged Ring Road, ITO junction, Pragati Maidan tunnel, and Kashmere Gate ISBT.",
+  "forecast": [
+    { "minutes": 0, "rainfall_mm_hr": 22.0 },
+    { "minutes": 30, "rainfall_mm_hr": 48.0 },
+    { "minutes": 60, "rainfall_mm_hr": 88.0 },
+    { "minutes": 90, "rainfall_mm_hr": 135.0 },
+    { "minutes": 120, "rainfall_mm_hr": 92.0 },
+    { "minutes": 150, "rainfall_mm_hr": 55.0 },
+    { "minutes": 180, "rainfall_mm_hr": 30.0 }
+  ]
+}
